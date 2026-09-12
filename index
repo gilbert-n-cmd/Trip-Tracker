@@ -1,0 +1,1730 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+    <title>🚗 Trip Tracker - Daina</title>
+    
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="theme-color" content="#0f152a" />
+    <link rel="manifest" href="manifest.json" />
+    
+    <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-auth-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-functions-compat.js"></script>
+    
+    <style>
+        * { box-sizing: border-box; font-family: system-ui, sans-serif; margin: 0; padding: 0; }
+        body { background: #0f152a; color: #f1f5f9; min-height: 100vh; display: flex; justify-content: center; padding: 16px; margin: 0; }
+        .container { max-width: 500px; width: 100%; }
+        .hidden { display: none !important; }
+        
+        #installBanner {
+            background: #1e293b; border-radius: 16px; padding: 16px; margin-bottom: 16px;
+            display: flex; align-items: center; justify-content: space-between; border: 1px solid #334155;
+        }
+        .btn-install { background: #3b82f6; color: #fff; border: none; padding: 8px 20px; border-radius: 10px; font-weight: 700; cursor: pointer; }
+        .btn-close-banner { background: none; border: none; color: #94a3b8; font-size: 20px; cursor: pointer; padding: 0 8px; }
+        
+        #authOverlay {
+            position: fixed; top: 0; left: 0; right: 0; bottom: 0;
+            background: rgba(15, 23, 42, 0.95);
+            display: flex; align-items: center; justify-content: center; z-index: 1000; padding: 20px;
+        }
+        #authOverlay .auth-box {
+            background: #1e293b; border-radius: 24px; padding: 32px 24px; max-width: 400px; width: 100%;
+        }
+        .input-group { margin-bottom: 14px; }
+        .input-group label { display: block; font-size: 13px; font-weight: 600; color: #94a3b8; margin-bottom: 4px; }
+        .input-group input {
+            width: 100%; padding: 14px 16px; border: 2px solid #334155; border-radius: 12px;
+            background: #0f172a; color: #f1f5f9; font-size: 16px;
+        }
+        .input-group input:focus { outline: none; border-color: #3b82f6; }
+        .input-group select {
+            width: 100%; padding: 14px 16px; border: 2px solid #334155; border-radius: 12px;
+            background: #0f172a; color: #f1f5f9; font-size: 16px;
+        }
+        .input-group select:focus { outline: none; border-color: #3b82f6; }
+        .btn-primary {
+            width: 100%; padding: 16px; border: none; border-radius: 12px; font-size: 18px;
+            font-weight: 700; background: #3b82f6; color: #fff; cursor: pointer;
+        }
+        .btn-primary:active { transform: scale(0.97); }
+        .auth-toggle { color: #60a5fa; cursor: pointer; font-weight: 600; display: inline-block; margin-top: 8px; }
+        .auth-error { color: #ef4444; font-size: 14px; margin: 8px 0; }
+        .auth-success { color: #4ade80; font-size: 14px; margin: 8px 0; }
+        
+        .header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; }
+        .header h1 { font-size: 22px; }
+        .header .user-info { font-size: 13px; color: #94a3b8; display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+        .btn-logout { background: #ef4444; color: #fff; border: none; padding: 6px 14px; border-radius: 8px; font-size: 12px; font-weight: 600; cursor: pointer; }
+        .btn-login-prompt { background: #3b82f6; color: #fff; border: none; padding: 6px 14px; border-radius: 8px; font-size: 12px; font-weight: 600; cursor: pointer; }
+        
+        .card { background: #1e293b; border-radius: 20px; padding: 20px; margin-bottom: 16px; box-shadow: 0 8px 24px rgba(0,0,0,0.4); }
+        
+        .stats { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+        .stat-box { background: #0f172a; border-radius: 14px; padding: 14px; text-align: center; }
+        .stat-label { font-size: 11px; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.5px; }
+        .stat-number { font-size: 26px; font-weight: 800; margin-top: 4px; }
+        .stat-number.green { color: #4ade80; }
+        .stat-number.blue { color: #60a5fa; }
+        .stat-number.purple { color: #a78bfa; }
+        .stat-number.orange { color: #fb923c; }
+        
+        .daina-card {
+            background: #1a2332; border-radius: 16px; padding: 16px;
+            border: 2px solid #334155; margin-bottom: 12px;
+        }
+        .daina-card .daina-name { font-size: 18px; font-weight: 700; color: #f1f5f9; }
+        .daina-card .daina-status { font-size: 14px; color: #94a3b8; margin-top: 4px; }
+        .daina-card .daina-status .picked { color: #60a5fa; font-weight: 600; }
+        .daina-card .daina-status .dropped { color: #a78bfa; font-weight: 600; }
+        .daina-card .daina-status .pending { color: #f87171; }
+        .daina-card .daina-status .completed { color: #4ade80; font-weight: 600; }
+        .daina-card .daina-status .done { color: #22c55e; font-weight: 600; }
+        
+        .daina-actions { display: flex; gap: 10px; margin-top: 12px; flex-wrap: wrap; }
+        .btn-daina {
+            flex: 1; min-width: 80px; padding: 12px 8px; border: none; border-radius: 12px;
+            font-size: 14px; font-weight: 700; cursor: pointer; transition: all 0.2s; text-align: center;
+        }
+        .btn-daina:active { transform: scale(0.95); }
+        .btn-daina-pickup { background: #3b82f6; color: #fff; }
+        .btn-daina-pickup:disabled { opacity: 0.3; cursor: not-allowed; }
+        .btn-daina-dropoff { background: #8b5cf6; color: #fff; }
+        .btn-daina-dropoff:disabled { opacity: 0.3; cursor: not-allowed; }
+        .btn-daina-complete { background: #22c55e; color: #fff; }
+        .btn-daina-complete:disabled { opacity: 0.3; cursor: not-allowed; }
+        .btn-daina-done { background: #f59e0b; color: #fff; }
+        .btn-daina-done:disabled { opacity: 0.3; cursor: not-allowed; }
+        
+        /* Additional Money Button */
+        .btn-additional {
+            background: #f97316; color: #fff; border: none; padding: 14px; border-radius: 12px;
+            font-size: 16px; font-weight: 700; width: 100%; cursor: pointer; margin-top: 12px;
+            display: flex; align-items: center; justify-content: center; gap: 10px;
+            transition: transform 0.1s;
+        }
+        .btn-additional:active { transform: scale(0.97); }
+        .btn-additional:disabled { opacity: 0.5; cursor: not-allowed; }
+        
+        .btn-share {
+            background: #25D366; color: #fff; border: none; padding: 14px; border-radius: 12px;
+            font-size: 16px; font-weight: 700; width: 100%; cursor: pointer; margin-top: 12px;
+            display: flex; align-items: center; justify-content: center; gap: 10px;
+        }
+        .btn-share:active { transform: scale(0.97); }
+        
+        .btn-reset {
+            background: #ef4444; color: #fff; padding: 12px; font-size: 14px; border: none;
+            border-radius: 12px; width: 100%; cursor: pointer; margin-top: 8px; font-weight: 600;
+        }
+        .btn-reset:disabled { opacity: 0.5; cursor: not-allowed; }
+        
+        .btn-paid {
+            background: #22c55e; color: #fff; padding: 14px; border: none; border-radius: 12px;
+            font-size: 16px; font-weight: 700; width: 100%; cursor: pointer; margin-top: 8px;
+            transition: transform 0.1s;
+        }
+        .btn-paid:active { transform: scale(0.97); }
+        .btn-paid:disabled { opacity: 0.5; cursor: not-allowed; }
+        
+        .trip-list { max-height: 250px; overflow-y: auto; margin-top: 12px; }
+        .trip-item {
+            display: flex; justify-content: space-between; padding: 10px 12px;
+            background: #0f172a; border-radius: 10px; margin-bottom: 6px; font-size: 14px; align-items: center;
+        }
+        .trip-item .type.pickup { color: #60a5fa; }
+        .trip-item .type.dropoff { color: #a78bfa; }
+        .trip-item .status-paid { color: #4ade80; font-size: 11px; margin-left: 4px; }
+        .trip-item .status-unpaid { color: #f87171; font-size: 11px; margin-left: 4px; }
+        .trip-item .status-done { color: #22c55e; font-size: 11px; margin-left: 4px; font-weight: 600; }
+        .trip-item .del { background: none; border: none; color: #ef4444; cursor: pointer; font-size: 18px; padding: 0 4px; }
+        .trip-item .del:disabled { opacity: 0.3; cursor: not-allowed; }
+        
+        /* Additional Money List Item */
+        .additional-item {
+            display: flex; justify-content: space-between; padding: 10px 12px;
+            background: #0f172a; border-radius: 10px; margin-bottom: 6px; font-size: 14px; align-items: center;
+            border-left: 3px solid #f97316;
+        }
+        .additional-item .reason { color: #f97316; font-weight: 600; font-size: 13px; }
+        .additional-item .date { color: #64748b; font-size: 11px; }
+        .additional-item .amount { color: #fbbf24; font-weight: 700; }
+        
+        .empty { text-align: center; color: #64748b; padding: 20px 0; font-size: 14px; }
+        .loading { text-align: center; color: #94a3b8; padding: 20px 0; }
+        .footer { text-align: center; font-size: 12px; color: #475569; margin-top: 20px; }
+        
+        .role-badge { display: inline-block; padding: 2px 10px; border-radius: 20px; font-size: 10px; font-weight: 700; margin-left: 4px; }
+        .role-badge.admin { background: #dc2626; color: #fff; }
+        .role-badge.user { background: #3b82f6; color: #fff; }
+        .login-badge { display: inline-block; background: #22c55e; color: #fff; padding: 2px 12px; border-radius: 20px; font-size: 11px; font-weight: 700; }
+        .readonly-badge { display: inline-block; background: #f59e0b; color: #fff; padding: 2px 12px; border-radius: 20px; font-size: 11px; font-weight: 700; }
+        
+        .monthly-summary { background: #0f172a; border-radius: 14px; padding: 16px; margin-top: 12px; }
+        .monthly-summary .month-title { color: #94a3b8; font-size: 12px; text-transform: uppercase; letter-spacing: 0.5px; }
+        .monthly-summary .month-amount { font-size: 24px; font-weight: 800; color: #4ade80; }
+        .monthly-summary .month-details { display: flex; justify-content: space-between; margin-top: 8px; font-size: 13px; color: #94a3b8; }
+        .monthly-summary .additional-amount { color: #f97316; font-size: 20px; font-weight: 800; }
+        
+        .tab-container { display: flex; gap: 8px; margin-bottom: 12px; flex-wrap: wrap; }
+        .tab-btn {
+            flex: 1; min-width: 80px; padding: 10px; border: 2px solid #334155; border-radius: 12px;
+            background: transparent; color: #94a3b8; font-weight: 600; font-size: 13px; cursor: pointer;
+            transition: all 0.2s;
+        }
+        .tab-btn.active { border-color: #3b82f6; color: #f1f5f9; background: #1e293b; }
+        .tab-btn:active { transform: scale(0.97); }
+        
+        .paid-history-item {
+            background: #0f172a; border-radius: 12px; padding: 14px; margin-bottom: 8px;
+            display: flex; justify-content: space-between; align-items: center;
+        }
+        .paid-history-item .month-name { font-weight: 600; color: #f1f5f9; }
+        .paid-history-item .month-amount { color: #4ade80; font-weight: 700; }
+        .paid-history-item .month-date { font-size: 12px; color: #64748b; }
+        
+        .sms-status {
+            background: #0f172a; border-radius: 10px; padding: 12px;
+            margin-top: 10px; font-size: 13px; color: #94a3b8;
+        }
+        .sms-status .sms-time { color: #60a5fa; font-weight: 600; }
+        .sms-status .sms-active { color: #4ade80; }
+        .btn-sms-test {
+            background: #f59e0b; color: #fff; border: none; padding: 8px 16px;
+            border-radius: 8px; font-weight: 600; cursor: pointer; margin-top: 8px; font-size: 13px;
+        }
+        .btn-sms-test:active { transform: scale(0.95); }
+        
+        .debug-info {
+            background: #0f172a; border-radius: 8px; padding: 10px; font-size: 11px;
+            color: #94a3b8; font-family: monospace; margin-top: 8px;
+            max-height: 60px; overflow-y: auto; border: 1px solid #1e293b;
+        }
+        .debug-info .highlight { color: #60a5fa; }
+        .debug-info .success { color: #4ade80; }
+        .debug-info .error { color: #f87171; }
+        .debug-info .admin { color: #dc2626; }
+        .debug-info .user { color: #3b82f6; }
+        
+        .permission-denied {
+            background: #7f1d1d; border: 1px solid #ef4444; border-radius: 10px;
+            padding: 12px; margin-top: 10px; font-size: 13px; color: #fca5a5; text-align: center;
+        }
+        
+        /* ============================================ */
+        /* MODAL FOR ADDITIONAL MONEY */
+        /* ============================================ */
+        .modal-overlay {
+            position: fixed; top: 0; left: 0; right: 0; bottom: 0;
+            background: rgba(0, 0, 0, 0.85);
+            display: flex; align-items: center; justify-content: center;
+            z-index: 2000; padding: 20px;
+        }
+        .modal-box {
+            background: #1e293b; border-radius: 24px; padding: 28px 24px;
+            max-width: 420px; width: 100%;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.6);
+            animation: slideUp 0.3s ease;
+        }
+        @keyframes slideUp {
+            from { opacity: 0; transform: translateY(30px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        .modal-box h2 {
+            font-size: 22px; margin-bottom: 6px; text-align: center;
+            color: #f97316;
+        }
+        .modal-box .modal-sub {
+            color: #94a3b8; font-size: 13px; margin-bottom: 20px; text-align: center;
+        }
+        .modal-box .input-group { margin-bottom: 16px; }
+        .modal-box .input-group label {
+            display: block; font-size: 13px; font-weight: 600;
+            color: #94a3b8; margin-bottom: 6px;
+        }
+        .modal-box .input-group input,
+        .modal-box .input-group select,
+        .modal-box .input-group textarea {
+            width: 100%; padding: 14px 16px; border: 2px solid #334155; border-radius: 12px;
+            background: #0f172a; color: #f1f5f9; font-size: 16px;
+            font-family: inherit;
+        }
+        .modal-box .input-group input:focus,
+        .modal-box .input-group select:focus,
+        .modal-box .input-group textarea:focus {
+            outline: none; border-color: #f97316;
+        }
+        .modal-box .input-group textarea {
+            min-height: 60px; resize: vertical;
+        }
+        .modal-actions {
+            display: flex; gap: 12px; margin-top: 24px;
+        }
+        .modal-actions .btn {
+            flex: 1; padding: 14px; border: none; border-radius: 12px;
+            font-size: 16px; font-weight: 700; cursor: pointer;
+            transition: transform 0.1s;
+        }
+        .modal-actions .btn:active { transform: scale(0.97); }
+        .modal-actions .btn-cancel {
+            background: #475569; color: #fff;
+        }
+        .modal-actions .btn-save {
+            background: #f97316; color: #fff;
+        }
+        .modal-actions .btn-save:disabled {
+            opacity: 0.5; cursor: not-allowed;
+        }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    
+    <div id="installBanner" class="hidden">
+        <div class="install-text">
+            <strong>📲 Install App</strong><br />
+            <span style="font-size:12px; color:#94a3b8;">Add to home screen for faster access</span>
+        </div>
+        <div>
+            <button class="btn-install" id="installBtn">Install</button>
+            <button class="btn-close-banner" id="closeBannerBtn">✕</button>
+        </div>
+    </div>
+    
+    <div id="mainApp">
+        
+        <div class="header">
+            <h1>🚗 Trip Tracker</h1>
+            <div class="user-info">
+                <span id="userStatus">👤 <span class="readonly-badge">View Only</span></span>
+                <button class="btn-login-prompt" id="loginToggleBtn">Login</button>
+            </div>
+        </div>
+        
+        <div id="permissionDenied" class="permission-denied hidden">
+            🔒 You don't have permission to delete trips. Only admins can delete.
+        </div>
+        
+        <!-- ===== DAINA TRIP CARD ===== -->
+        <div class="card" id="dainaCard">
+            <div style="display:flex; justify-content:space-between; align-items:center;">
+                <div>
+                    <div class="daina-name">👩 Daina</div>
+                    <div class="daina-status" id="dainaStatus">
+                        <span class="pending">⏳ Ready for trip</span>
+                    </div>
+                </div>
+                <div style="text-align:right;">
+                    <div style="font-size:12px; color:#64748b;">Today's Trips</div>
+                    <div style="font-size:20px; font-weight:800; color:#60a5fa;" id="dainaTripCount">0</div>
+                </div>
+            </div>
+            <div class="daina-actions">
+                <button class="btn-daina btn-daina-pickup" id="dainaPickupBtn">⬆️ Pick Up</button>
+                <button class="btn-daina btn-daina-dropoff" id="dainaDropoffBtn" disabled>⬇️ Drop Off</button>
+                <button class="btn-daina btn-daina-complete" id="dainaCompleteBtn" style="display:none;">✅ Complete Trip</button>
+                <button class="btn-daina btn-daina-done" id="dainaDoneBtn" style="display:none;">🎉 Done</button>
+            </div>
+            
+            <div class="sms-status">
+                <div style="display:flex; justify-content:space-between; align-items:center;">
+                    <div>
+                        <span>📱 SMS Reminders</span>
+                        <span style="margin-left:8px;" id="smsStatusBadge">
+                            <span class="sms-active">● Active</span>
+                        </span>
+                    </div>
+                    <div>
+                        <span class="sms-time">12:00 PM</span> 
+                        <span style="color:#64748b;">&</span> 
+                        <span class="sms-time">6:00 PM</span>
+                    </div>
+                </div>
+                <div style="margin-top:6px; font-size:12px; color:#64748b;">
+                    📞 0779905605
+                </div>
+                <button class="btn-sms-test" id="testSmsBtn">📤 Test SMS Now</button>
+            </div>
+            
+            <div class="debug-info" id="debugInfo">
+                🔍 Waiting for trips...
+            </div>
+        </div>
+        
+        <!-- Stats -->
+        <div class="card">
+            <div class="stats">
+                <div class="stat-box">
+                    <div class="stat-label">Today</div>
+                    <div class="stat-number blue" id="todayTotal">0</div>
+                </div>
+                <div class="stat-box">
+                    <div class="stat-label">This Week</div>
+                    <div class="stat-number green" id="weekTotal">0</div>
+                </div>
+                <div class="stat-box">
+                    <div class="stat-label">This Month</div>
+                    <div class="stat-number purple" id="monthTotal">0</div>
+                </div>
+                <div class="stat-box">
+                    <div class="stat-label">All Time</div>
+                    <div class="stat-number orange" id="allTotal">0</div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Monthly Payment Summary -->
+        <div class="card" id="monthlyCard">
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
+                <strong>📊 Monthly Payment Summary</strong>
+                <span style="font-size:12px; color:#94a3b8;" id="currentMonthLabel">September 2026</span>
+            </div>
+            <div class="monthly-summary">
+                <div class="month-title">Total Due This Month</div>
+                <div class="month-amount" id="monthlyDue">0</div>
+                <div class="month-details">
+                    <span>Trips: <strong id="monthlyTripsCount">0</strong></span>
+                    <span>Per Trip: <strong>2,000</strong></span>
+                    <span>Status: <strong id="paymentStatus">Pending</strong></span>
+                </div>
+                <div style="margin-top:10px; padding-top:10px; border-top:1px solid #1e293b;">
+                    <div style="display:flex; justify-content:space-between; align-items:center;">
+                        <span style="color:#94a3b8; font-size:12px;">➕ Additional Money</span>
+                        <span class="additional-amount" id="monthlyAdditional">0</span>
+                    </div>
+                </div>
+                <div style="margin-top:8px; padding-top:8px; border-top:1px solid #1e293b;">
+                    <div style="display:flex; justify-content:space-between; align-items:center;">
+                        <span style="color:#f1f5f9; font-weight:600;">💰 GRAND TOTAL</span>
+                        <span style="color:#4ade80; font-weight:800; font-size:20px;" id="monthlyGrandTotal">0</span>
+                    </div>
+                </div>
+            </div>
+            <button class="btn-paid" id="markPaidBtn">
+                ✅ Mark This Month as Paid
+            </button>
+        </div>
+        
+        <!-- Tabs -->
+        <div class="tab-container">
+            <button class="tab-btn active" id="activeTabBtn">📋 Trips</button>
+            <button class="tab-btn" id="additionalTabBtn">➕ Additional</button>
+            <button class="tab-btn" id="paidTabBtn">✅ Paid</button>
+        </div>
+        
+        <!-- Trips List -->
+        <div class="card" id="activeTripsCard">
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
+                <strong>📋 Recent Trips</strong>
+                <span style="font-size:12px; color:#94a3b8;" id="tripCount">0 trips</span>
+            </div>
+            <div class="trip-list" id="tripList">
+                <div class="loading">Loading trips...</div>
+            </div>
+        </div>
+        
+        <!-- Additional Money List -->
+        <div class="card hidden" id="additionalCard">
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
+                <strong>➕ Additional Money</strong>
+                <span style="font-size:12px; color:#94a3b8;" id="additionalCount">0 entries</span>
+            </div>
+            <div class="trip-list" id="additionalList">
+                <div class="empty">No additional money entries yet.</div>
+            </div>
+        </div>
+        
+        <!-- Paid History -->
+        <div class="card hidden" id="paidHistoryCard">
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
+                <strong>✅ Paid Months</strong>
+                <span style="font-size:12px; color:#94a3b8;" id="paidCount">0 months</span>
+            </div>
+            <div id="paidHistoryList">
+                <div class="empty">No paid months yet.</div>
+            </div>
+        </div>
+        
+        <!-- Action Buttons -->
+        <div class="card">
+            <!-- ADDITIONAL MONEY BUTTON -->
+            <button class="btn-additional" id="additionalBtn">
+                ➕ Add Additional Money
+            </button>
+            
+            <button class="btn-share" id="shareBtn">
+                📤 Share Report on WhatsApp
+            </button>
+            
+            <button class="btn-reset" id="resetBtn" disabled>🗑️ Delete All My Trips</button>
+        </div>
+        
+        <div class="footer">📊 Data synced with Firebase · Role-based access</div>
+    </div>
+    
+    <!-- ===== ADDITIONAL MONEY MODAL ===== -->
+    <div id="additionalModal" class="modal-overlay hidden">
+        <div class="modal-box">
+            <h2>➕ Additional Money</h2>
+            <div class="modal-sub">Add extra money with reason</div>
+            
+            <div class="input-group">
+                <label>Reason</label>
+                <select id="additionalReason">
+                    <option value="">-- Select reason --</option>
+                    <option value="Fuel">⛽ Fuel</option>
+                    <option value="Repair">🔧 Repair</option>
+                    <option value="Wash">🚿 Car Wash</option>
+                    <option value="Parking">🅿️ Parking</option>
+                    <option value="Toll">🛣️ Toll</option>
+                    <option value="Snacks">🍔 Snacks</option>
+                    <option value="Airtime">📱 Airtime</option>
+                    <option value="Emergency">🚨 Emergency</option>
+                    <option value="Other">📝 Other</option>
+                </select>
+            </div>
+            
+            <div class="input-group" id="customReasonGroup" style="display:none;">
+                <label>Custom Reason</label>
+                <input type="text" id="customReason" placeholder="Enter custom reason..." />
+            </div>
+            
+            <div class="input-group">
+                <label>Amount (UGX)</label>
+                <input type="number" id="additionalAmount" placeholder="e.g. 5000" min="0" step="500" />
+            </div>
+            
+            <div class="input-group">
+                <label>Note (optional)</label>
+                <textarea id="additionalNote" placeholder="Add any notes..."></textarea>
+            </div>
+            
+            <div class="modal-actions">
+                <button class="btn btn-cancel" id="modalCancelBtn">Cancel</button>
+                <button class="btn btn-save" id="modalSaveBtn" disabled>💾 Save</button>
+            </div>
+        </div>
+    </div>
+    
+    <!-- ===== AUTH MODAL ===== -->
+    <div id="authOverlay" class="hidden">
+        <div class="auth-box">
+            <h2>🔐 Login Required</h2>
+            <div class="sub">Sign in to add, edit, or delete trips</div>
+            <div id="authError" class="auth-error"></div>
+            <div id="authSuccess" class="auth-success hidden"></div>
+            <div class="input-group">
+                <label>Email</label>
+                <input type="email" id="emailInput" placeholder="you@email.com" />
+            </div>
+            <div class="input-group">
+                <label>Password</label>
+                <input type="password" id="passwordInput" placeholder="••••••••" />
+            </div>
+            <button class="btn-primary" id="authBtn">Sign In</button>
+            <div style="margin-top:12px; text-align:center;">
+                <span style="color:#94a3b8;font-size:14px;">Don't have an account? </span>
+                <span class="auth-toggle" id="toggleAuth">Create one</span>
+            </div>
+            <div style="margin-top:16px; text-align:center;">
+                <button class="btn-primary" id="skipAuthBtn" style="background:#475569; font-size:14px; padding:12px;">
+                    👁️ Continue as Viewer
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+    // ====================================================
+    // FIREBASE CONFIG
+    // ====================================================
+    const firebaseConfig = {
+        apiKey: "AIzaSyAGWdBaIUOYT-SwOQuWMjRymDUnRNP60MA",
+        authDomain: "my-registration-and-login.firebaseapp.com",
+        projectId: "my-registration-and-login",
+        storageBucket: "my-registration-and-login.firebasestorage.app",
+        messagingSenderId: "751883676713",
+        appId: "1:751883676713:web:4401fcf89e4ce348ef8038",
+        measurementId: "G-NRKKC9K2ZM"
+    };
+
+    firebase.initializeApp(firebaseConfig);
+    const auth = firebase.auth();
+    const db = firebase.firestore();
+    const functions = firebase.functions();
+
+    // ====================================================
+    // STATE
+    // ====================================================
+    const RATE = 2000;
+    const PHONE_NUMBER = "0779905605";
+    let trips = [];
+    let paidMonths = [];
+    let additionalMoney = [];
+    let currentUser = null;
+    let currentUserRole = null;
+    let unsubscribeTrips = null;
+    let unsubscribePaid = null;
+    let unsubscribeAdditional = null;
+    let isSignUp = false;
+    let deferredPrompt = null;
+    let currentTab = 'active';
+    let isProcessing = false;
+
+    // ====================================================
+    // DOM REFS
+    // ====================================================
+    const authOverlay = document.getElementById('authOverlay');
+    const emailInput = document.getElementById('emailInput');
+    const passwordInput = document.getElementById('passwordInput');
+    const authBtn = document.getElementById('authBtn');
+    const toggleAuth = document.getElementById('toggleAuth');
+    const skipAuthBtn = document.getElementById('skipAuthBtn');
+    const authError = document.getElementById('authError');
+    const authSuccess = document.getElementById('authSuccess');
+    const loginToggleBtn = document.getElementById('loginToggleBtn');
+    const userStatus = document.getElementById('userStatus');
+    const tripList = document.getElementById('tripList');
+    const tripCount = document.getElementById('tripCount');
+    const todayTotal = document.getElementById('todayTotal');
+    const weekTotal = document.getElementById('weekTotal');
+    const monthTotal = document.getElementById('monthTotal');
+    const allTotal = document.getElementById('allTotal');
+    const resetBtn = document.getElementById('resetBtn');
+    const monthlyDue = document.getElementById('monthlyDue');
+    const monthlyTripsCount = document.getElementById('monthlyTripsCount');
+    const monthlyAdditional = document.getElementById('monthlyAdditional');
+    const monthlyGrandTotal = document.getElementById('monthlyGrandTotal');
+    const paymentStatus = document.getElementById('paymentStatus');
+    const currentMonthLabel = document.getElementById('currentMonthLabel');
+    const markPaidBtn = document.getElementById('markPaidBtn');
+    const installBanner = document.getElementById('installBanner');
+    const installBtn = document.getElementById('installBtn');
+    const closeBannerBtn = document.getElementById('closeBannerBtn');
+    const activeTabBtn = document.getElementById('activeTabBtn');
+    const additionalTabBtn = document.getElementById('additionalTabBtn');
+    const paidTabBtn = document.getElementById('paidTabBtn');
+    const activeTripsCard = document.getElementById('activeTripsCard');
+    const additionalCard = document.getElementById('additionalCard');
+    const paidHistoryCard = document.getElementById('paidHistoryCard');
+    const additionalList = document.getElementById('additionalList');
+    const additionalCount = document.getElementById('additionalCount');
+    const paidHistoryList = document.getElementById('paidHistoryList');
+    const paidCount = document.getElementById('paidCount');
+    const permissionDenied = document.getElementById('permissionDenied');
+    
+    // Additional Money Modal
+    const additionalModal = document.getElementById('additionalModal');
+    const additionalBtn = document.getElementById('additionalBtn');
+    const additionalReason = document.getElementById('additionalReason');
+    const customReasonGroup = document.getElementById('customReasonGroup');
+    const customReason = document.getElementById('customReason');
+    const additionalAmount = document.getElementById('additionalAmount');
+    const additionalNote = document.getElementById('additionalNote');
+    const modalCancelBtn = document.getElementById('modalCancelBtn');
+    const modalSaveBtn = document.getElementById('modalSaveBtn');
+    
+    // Daina DOM
+    const dainaPickupBtn = document.getElementById('dainaPickupBtn');
+    const dainaDropoffBtn = document.getElementById('dainaDropoffBtn');
+    const dainaCompleteBtn = document.getElementById('dainaCompleteBtn');
+    const dainaDoneBtn = document.getElementById('dainaDoneBtn');
+    const dainaStatusEl = document.getElementById('dainaStatus');
+    const dainaTripCount = document.getElementById('dainaTripCount');
+    const testSmsBtn = document.getElementById('testSmsBtn');
+    const debugInfo = document.getElementById('debugInfo');
+
+    // ====================================================
+    // PERMISSIONS
+    // ====================================================
+    function canDelete() { return currentUserRole === 'admin'; }
+    function canMarkPaid() { return currentUserRole === 'admin'; }
+    function canAddTrip() { return currentUser && (currentUserRole === 'admin' || currentUserRole === 'user'); }
+    function isLoggedIn() { return currentUser !== null; }
+
+    // ====================================================
+    // PWA INSTALL
+    // ====================================================
+    window.addEventListener('beforeinstallprompt', (e) => {
+        e.preventDefault();
+        deferredPrompt = e;
+        installBanner.classList.remove('hidden');
+    });
+
+    installBtn.addEventListener('click', async () => {
+        if (deferredPrompt) {
+            deferredPrompt.prompt();
+            const result = await deferredPrompt.userChoice;
+            if (result.outcome === 'accepted') installBanner.classList.add('hidden');
+            deferredPrompt = null;
+        }
+    });
+
+    closeBannerBtn.addEventListener('click', () => installBanner.classList.add('hidden'));
+    window.addEventListener('appinstalled', () => installBanner.classList.add('hidden'));
+
+    // ====================================================
+    // ADDITIONAL MONEY - OPEN MODAL
+    // ====================================================
+    additionalBtn.addEventListener('click', () => {
+        if (!isLoggedIn()) {
+            authOverlay.classList.remove('hidden');
+            authError.textContent = '⚠️ Please login to add additional money';
+            return;
+        }
+        
+        // Reset form
+        additionalReason.value = '';
+        customReason.value = '';
+        customReasonGroup.style.display = 'none';
+        additionalAmount.value = '';
+        additionalNote.value = '';
+        modalSaveBtn.disabled = true;
+        
+        additionalModal.classList.remove('hidden');
+    });
+
+    // Show custom reason input when "Other" is selected
+    additionalReason.addEventListener('change', () => {
+        if (additionalReason.value === 'Other') {
+            customReasonGroup.style.display = 'block';
+        } else {
+            customReasonGroup.style.display = 'none';
+        }
+        validateAdditionalForm();
+    });
+
+    // Validate form
+    function validateAdditionalForm() {
+        const hasReason = additionalReason.value !== '' && 
+                          (additionalReason.value !== 'Other' || customReason.value.trim() !== '');
+        const hasAmount = additionalAmount.value && parseFloat(additionalAmount.value) > 0;
+        
+        modalSaveBtn.disabled = !(hasReason && hasAmount);
+    }
+
+    additionalAmount.addEventListener('input', validateAdditionalForm);
+    customReason.addEventListener('input', validateAdditionalForm);
+
+    // Cancel button
+    modalCancelBtn.addEventListener('click', () => {
+        additionalModal.classList.add('hidden');
+    });
+
+    // Close modal when clicking outside
+    additionalModal.addEventListener('click', (e) => {
+        if (e.target === additionalModal) {
+            additionalModal.classList.add('hidden');
+        }
+    });
+
+    // ====================================================
+    // ADDITIONAL MONEY - SAVE
+    // ====================================================
+    modalSaveBtn.addEventListener('click', async () => {
+        if (isProcessing) return;
+        
+        if (!isLoggedIn()) {
+            alert('Please login first');
+            return;
+        }
+        
+        const reason = additionalReason.value === 'Other' 
+            ? customReason.value.trim() 
+            : additionalReason.value;
+        const amount = parseFloat(additionalAmount.value);
+        const note = additionalNote.value.trim();
+        
+        if (!reason || !amount || amount <= 0) {
+            alert('Please fill in all required fields');
+            return;
+        }
+        
+        isProcessing = true;
+        modalSaveBtn.disabled = true;
+        modalSaveBtn.textContent = '💾 Saving...';
+        
+        try {
+            await db.collection('additionalMoney').add({
+                reason: reason,
+                amount: amount,
+                note: note,
+                userId: currentUser.uid,
+                userEmail: currentUser.email,
+                date: new Date().toISOString(),
+                createdAt: firebase.firestore.FieldValue.serverTimestamp(),
+                isPaid: false,
+                paidMonth: null
+            });
+            
+            // Close modal
+            additionalModal.classList.add('hidden');
+            
+            // Reset form
+            additionalReason.value = '';
+            customReason.value = '';
+            customReasonGroup.style.display = 'none';
+            additionalAmount.value = '';
+            additionalNote.value = '';
+            
+            showNotification('✅ Additional money saved: ' + amount.toLocaleString());
+            
+            // Switch to additional tab
+            switchTab('additional');
+            
+        } catch (error) {
+            alert('Error saving: ' + error.message);
+            console.error(error);
+        } finally {
+            isProcessing = false;
+            modalSaveBtn.disabled = false;
+            modalSaveBtn.textContent = '💾 Save';
+        }
+    });
+
+    // ====================================================
+    // TAB SWITCHING
+    // ====================================================
+    function switchTab(tab) {
+        currentTab = tab;
+        
+        // Update buttons
+        activeTabBtn.classList.toggle('active', tab === 'active');
+        additionalTabBtn.classList.toggle('active', tab === 'additional');
+        paidTabBtn.classList.toggle('active', tab === 'paid');
+        
+        // Update cards
+        activeTripsCard.classList.toggle('hidden', tab !== 'active');
+        additionalCard.classList.toggle('hidden', tab !== 'additional');
+        paidHistoryCard.classList.toggle('hidden', tab !== 'paid');
+        
+        // Render tab content
+        if (tab === 'additional') renderAdditionalMoney();
+        if (tab === 'paid') renderPaidHistory();
+    }
+
+    activeTabBtn.addEventListener('click', () => switchTab('active'));
+    additionalTabBtn.addEventListener('click', () => switchTab('additional'));
+    paidTabBtn.addEventListener('click', () => switchTab('paid'));
+
+    // ====================================================
+    // LISTENERS
+    // ====================================================
+    function startTripListener() {
+        if (unsubscribeTrips) unsubscribeTrips();
+        unsubscribeTrips = db.collection('trips')
+            .orderBy('date', 'desc')
+            .limit(500)
+            .onSnapshot((snapshot) => {
+                trips = [];
+                snapshot.forEach((doc) => {
+                    const data = doc.data();
+                    trips.push({
+                        id: doc.id,
+                        date: data.date,
+                        type: data.type,
+                        amount: data.amount || RATE,
+                        userId: data.userId || 'unknown',
+                        userEmail: data.userEmail || 'Unknown',
+                        isPaid: data.isPaid || false,
+                        isDone: data.isDone || false,
+                        paidMonth: data.paidMonth || null,
+                        dainaTrip: data.dainaTrip || false
+                    });
+                });
+                render();
+                updateDainaUI();
+            }, (error) => {
+                console.error('Firestore error:', error);
+                tripList.innerHTML = '<div class="empty">❌ Error loading trips.</div>';
+            });
+    }
+
+    function startPaidListener() {
+        if (unsubscribePaid) unsubscribePaid();
+        unsubscribePaid = db.collection('paidMonths')
+            .orderBy('paidDate', 'desc')
+            .onSnapshot((snapshot) => {
+                paidMonths = [];
+                snapshot.forEach((doc) => {
+                    const data = doc.data();
+                    paidMonths.push({
+                        id: doc.id,
+                        month: data.month,
+                        year: data.year,
+                        monthName: data.monthName || 'Unknown Month',
+                        total: data.total || 0,
+                        trips: data.trips || 0,
+                        additional: data.additional || 0,
+                        grandTotal: data.grandTotal || 0,
+                        paidDate: data.paidDate,
+                        paidBy: data.paidBy || 'Unknown'
+                    });
+                });
+                if (currentTab === 'paid') renderPaidHistory();
+            });
+    }
+
+    function startAdditionalListener() {
+        if (unsubscribeAdditional) unsubscribeAdditional();
+        unsubscribeAdditional = db.collection('additionalMoney')
+            .orderBy('date', 'desc')
+            .limit(200)
+            .onSnapshot((snapshot) => {
+                additionalMoney = [];
+                snapshot.forEach((doc) => {
+                    const data = doc.data();
+                    additionalMoney.push({
+                        id: doc.id,
+                        reason: data.reason || 'Unknown',
+                        amount: data.amount || 0,
+                        note: data.note || '',
+                        userId: data.userId || 'unknown',
+                        userEmail: data.userEmail || 'Unknown',
+                        date: data.date,
+                        isPaid: data.isPaid || false,
+                        paidMonth: data.paidMonth || null
+                    });
+                });
+                if (currentTab === 'additional') renderAdditionalMoney();
+                render(); // Update grand total
+            }, (error) => {
+                console.error('Additional money error:', error);
+            });
+    }
+
+    // ====================================================
+    // AUTH WITH ROLE
+    // ====================================================
+    async function getUserRole(uid) {
+        try {
+            const userDoc = await db.collection('users').doc(uid).get();
+            if (userDoc.exists) {
+                return userDoc.data().role || 'user';
+            }
+            return 'user';
+        } catch (error) {
+            console.error('Error getting role:', error);
+            return 'user';
+        }
+    }
+
+    async function updateUIForAuth(user) {
+        if (user) {
+            currentUser = user;
+            currentUserRole = await getUserRole(user.uid);
+            
+            const roleBadge = currentUserRole === 'admin' 
+                ? '<span class="role-badge admin">👑 ADMIN</span>' 
+                : '<span class="role-badge user">👤 USER</span>';
+            
+            userStatus.innerHTML = `👤 ${user.email.split('@')[0]} ${roleBadge} <span class="login-badge">● Logged In</span>`;
+            loginToggleBtn.textContent = 'Logout';
+            loginToggleBtn.className = 'btn-logout';
+            
+            const isAdmin = currentUserRole === 'admin';
+            resetBtn.disabled = !isAdmin;
+            resetBtn.textContent = isAdmin ? '🗑️ Delete All My Trips' : '🔒 Delete All (Admin Only)';
+            
+            const hasUnpaid = getCurrentMonthUnpaidTrips().length > 0;
+            markPaidBtn.disabled = !isAdmin || !hasUnpaid;
+            
+            if (!isAdmin) {
+                markPaidBtn.textContent = '🔒 Mark as Paid (Admin Only)';
+            } else if (hasUnpaid) {
+                const now = new Date();
+                const monthTotal = getCurrentMonthUnpaidTrips().reduce((s, t) => s + t.amount, 0);
+                markPaidBtn.textContent = `✅ Mark ${now.toLocaleDateString('en-UG', { month: 'long' })} as Paid (${monthTotal.toLocaleString()})`;
+            } else {
+                markPaidBtn.textContent = '✅ No unpaid trips this month';
+            }
+            
+            authOverlay.classList.add('hidden');
+        } else {
+            currentUser = null;
+            currentUserRole = null;
+            userStatus.innerHTML = '👤 <span class="readonly-badge">View Only</span>';
+            loginToggleBtn.textContent = 'Login';
+            loginToggleBtn.className = 'btn-login-prompt';
+            resetBtn.disabled = true;
+            markPaidBtn.disabled = true;
+            markPaidBtn.textContent = '🔒 Login to mark as paid';
+        }
+        render();
+        updateDainaUI();
+    }
+
+    loginToggleBtn.addEventListener('click', () => {
+        if (currentUser) {
+            auth.signOut();
+        } else {
+            authOverlay.classList.remove('hidden');
+            authError.textContent = '';
+            authSuccess.textContent = '';
+            emailInput.value = '';
+            passwordInput.value = '';
+            isSignUp = false;
+            authBtn.textContent = 'Sign In';
+            toggleAuth.textContent = 'Create one';
+        }
+    });
+
+    toggleAuth.addEventListener('click', () => {
+        isSignUp = !isSignUp;
+        authBtn.textContent = isSignUp ? 'Create Account' : 'Sign In';
+        toggleAuth.textContent = isSignUp ? 'Sign in instead' : 'Create one';
+        authError.textContent = '';
+        authSuccess.textContent = '';
+    });
+
+    skipAuthBtn.addEventListener('click', () => {
+        authOverlay.classList.add('hidden');
+        authError.textContent = '';
+    });
+
+    authBtn.addEventListener('click', async () => {
+        const email = emailInput.value.trim();
+        const password = passwordInput.value.trim();
+        if (!email || !password) { authError.textContent = 'Please enter email and password'; return; }
+        if (password.length < 6) { authError.textContent = 'Password must be at least 6 characters'; return; }
+        authBtn.disabled = true;
+        authError.textContent = '';
+        authSuccess.classList.add('hidden');
+        try {
+            if (isSignUp) {
+                const userCredential = await auth.createUserWithEmailAndPassword(email, password);
+                await db.collection('users').doc(userCredential.user.uid).set({
+                    email: email,
+                    role: 'user',
+                    createdAt: firebase.firestore.FieldValue.serverTimestamp()
+                });
+                authSuccess.textContent = '✅ Account created! Default role: User';
+                authSuccess.classList.remove('hidden');
+                setTimeout(() => authOverlay.classList.add('hidden'), 1500);
+            } else {
+                await auth.signInWithEmailAndPassword(email, password);
+                authOverlay.classList.add('hidden');
+            }
+        } catch (error) {
+            authError.textContent = error.message;
+            authBtn.disabled = false;
+        }
+    });
+
+    passwordInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') authBtn.click(); });
+    emailInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') authBtn.click(); });
+
+    auth.onAuthStateChanged((user) => {
+        updateUIForAuth(user);
+        authBtn.disabled = false;
+    });
+
+    // ====================================================
+    // NOTIFICATIONS
+    // ====================================================
+    function showNotification(msg) {
+        const existing = document.querySelector('.app-notification');
+        if (existing) existing.remove();
+        
+        const div = document.createElement('div');
+        div.className = 'app-notification';
+        div.style.cssText = `
+            background: #1e293b; border: 1px solid #4ade80; border-radius: 12px;
+            padding: 12px 16px; margin-bottom: 12px; color: #f1f5f9; font-size: 14px;
+            animation: slideDown 0.3s ease;
+        `;
+        div.textContent = msg;
+        
+        const container = document.querySelector('.container');
+        container.insertBefore(div, container.firstChild);
+        
+        setTimeout(() => {
+            div.style.transition = 'opacity 0.5s';
+            div.style.opacity = '0';
+            setTimeout(() => div.remove(), 500);
+        }, 4000);
+    }
+
+    function showPermissionDenied() {
+        permissionDenied.classList.remove('hidden');
+        setTimeout(() => permissionDenied.classList.add('hidden'), 3000);
+    }
+
+    // ====================================================
+    // SMS FUNCTIONS
+    // ====================================================
+    async function sendSMS(message, phone = PHONE_NUMBER) {
+        try {
+            const sendSMSFunction = functions.httpsCallable('sendSMS');
+            const result = await sendSMSFunction({ phone: phone, message: message });
+            
+            if (result.data && result.data.success) {
+                showNotification('📱 SMS sent to ' + phone);
+                return true;
+            } else {
+                showNotification('❌ SMS failed');
+                return false;
+            }
+        } catch (error) {
+            showNotification('❌ SMS error: ' + error.message);
+            return false;
+        }
+    }
+
+    testSmsBtn.addEventListener('click', async () => {
+        const now = new Date();
+        const message = `🧪 Test SMS from Trip Tracker\nTime: ${now.toLocaleTimeString('en-UG')}\nPhone: ${PHONE_NUMBER}`;
+        await sendSMS(message);
+    });
+
+    function checkAndSendReminders() {
+        const now = new Date();
+        const hours = now.getHours();
+        const minutes = now.getMinutes();
+        
+        if (hours === 12 && minutes === 0) {
+            const todayTrips = getTodayDainaTrips();
+            const hasPickup = todayTrips.some(t => t.type === 'pickup' && !t.isPaid && !t.isDone);
+            if (!hasPickup) {
+                sendSMS(`🚗 Hi, have you picked up Daina yet?`);
+            }
+        }
+        
+        if (hours === 18 && minutes === 0) {
+            const todayTrips = getTodayDainaTrips();
+            const hasDropoff = todayTrips.some(t => t.type === 'dropoff' && !t.isPaid && !t.isDone);
+            if (!hasDropoff) {
+                sendSMS(`🚗 Hi, have you dropped off Daina yet?`);
+            }
+        }
+    }
+
+    // ====================================================
+    // DAINA TRIP FUNCTIONS
+    // ====================================================
+    function getTodayDainaTrips() {
+        const today = new Date();
+        return trips.filter(t => {
+            if (!t.dainaTrip) return false;
+            const d = new Date(t.date);
+            return d.getFullYear() === today.getFullYear() &&
+                   d.getMonth() === today.getMonth() &&
+                   d.getDate() === today.getDate();
+        });
+    }
+
+    function updateDainaUI() {
+        const todayTrips = getTodayDainaTrips();
+        const totalToday = todayTrips.length;
+        dainaTripCount.textContent = totalToday;
+        
+        const hasPickup = todayTrips.some(t => t.type === 'pickup' && !t.isPaid && !t.isDone);
+        const hasDropoff = todayTrips.some(t => t.type === 'dropoff' && !t.isPaid && !t.isDone);
+        const hasUnpaid = todayTrips.some(t => !t.isPaid && !t.isDone);
+        const allDone = todayTrips.length > 0 && todayTrips.every(t => t.isPaid || t.isDone);
+        
+        const roleLabel = currentUserRole === 'admin' ? '👑 Admin' : (currentUserRole === 'user' ? '👤 User' : '👁️ Viewer');
+        debugInfo.innerHTML = `${roleLabel} | Trips: ${totalToday} | Pickup: ${hasPickup ? '✅' : '❌'} | Dropoff: ${hasDropoff ? '✅' : '❌'}`;
+        
+        const canControl = canAddTrip();
+        
+        if (allDone && totalToday > 0) {
+            dainaStatusEl.innerHTML = '<span class="done">🎉 All trips done for today!</span>';
+            dainaPickupBtn.disabled = true;
+            dainaDropoffBtn.disabled = true;
+            dainaCompleteBtn.style.display = 'none';
+            dainaDoneBtn.style.display = 'block';
+            dainaDoneBtn.disabled = false;
+            return;
+        }
+        
+        if (totalToday === 0 || !hasUnpaid) {
+            dainaStatusEl.innerHTML = '<span class="pending">⏳ Ready for trip</span>';
+            dainaPickupBtn.disabled = !canControl;
+            dainaDropoffBtn.disabled = true;
+            dainaCompleteBtn.style.display = 'none';
+            dainaDoneBtn.style.display = 'none';
+            return;
+        }
+        
+        if (hasPickup && !hasDropoff) {
+            dainaStatusEl.innerHTML = '<span class="picked">⬆️ Picked up - waiting for drop off</span>';
+            dainaPickupBtn.disabled = true;
+            dainaDropoffBtn.disabled = !canControl;
+            dainaCompleteBtn.style.display = 'none';
+            dainaDoneBtn.style.display = 'none';
+            return;
+        }
+        
+        if (hasPickup && hasDropoff) {
+            dainaStatusEl.innerHTML = '<span class="completed">✅ Trip complete! Click "Complete Trip" to finish</span>';
+            dainaPickupBtn.disabled = true;
+            dainaDropoffBtn.disabled = true;
+            dainaCompleteBtn.style.display = 'block';
+            dainaCompleteBtn.disabled = !canControl;
+            dainaDoneBtn.style.display = 'none';
+            return;
+        }
+        
+        dainaStatusEl.innerHTML = '<span class="pending">⏳ Ready for trip</span>';
+        dainaPickupBtn.disabled = !canControl;
+        dainaDropoffBtn.disabled = true;
+        dainaCompleteBtn.style.display = 'none';
+        dainaDoneBtn.style.display = 'none';
+    }
+
+    // ====================================================
+    // DAINA TRIP ACTIONS
+    // ====================================================
+    dainaPickupBtn.addEventListener('click', async () => {
+        if (isProcessing) return;
+        if (!canAddTrip()) {
+            authOverlay.classList.remove('hidden');
+            authError.textContent = '⚠️ Please login to add trips';
+            return;
+        }
+        
+        if (!confirm('⬆️ Did you pick up Daina? (2,000)')) return;
+        
+        isProcessing = true;
+        dainaPickupBtn.disabled = true;
+        
+        try {
+            await db.collection('trips').add({
+                date: new Date().toISOString(),
+                type: 'pickup',
+                amount: RATE,
+                userId: currentUser.uid,
+                userEmail: currentUser.email,
+                isPaid: false,
+                isDone: false,
+                paidMonth: null,
+                dainaTrip: true,
+                createdAt: firebase.firestore.FieldValue.serverTimestamp()
+            });
+            if (navigator.vibrate) navigator.vibrate(10);
+        } catch (error) {
+            alert('Error saving: ' + error.message);
+        } finally {
+            setTimeout(() => { isProcessing = false; updateDainaUI(); }, 500);
+        }
+    });
+
+    dainaDropoffBtn.addEventListener('click', async () => {
+        if (isProcessing) return;
+        if (!canAddTrip()) {
+            authOverlay.classList.remove('hidden');
+            authError.textContent = '⚠️ Please login to add trips';
+            return;
+        }
+        
+        if (!confirm('⬇️ Did you drop off Daina? (2,000)')) return;
+        
+        isProcessing = true;
+        dainaDropoffBtn.disabled = true;
+        
+        try {
+            await db.collection('trips').add({
+                date: new Date().toISOString(),
+                type: 'dropoff',
+                amount: RATE,
+                userId: currentUser.uid,
+                userEmail: currentUser.email,
+                isPaid: false,
+                isDone: false,
+                paidMonth: null,
+                dainaTrip: true,
+                createdAt: firebase.firestore.FieldValue.serverTimestamp()
+            });
+            if (navigator.vibrate) navigator.vibrate(10);
+        } catch (error) {
+            alert('Error saving: ' + error.message);
+        } finally {
+            setTimeout(() => { isProcessing = false; updateDainaUI(); }, 500);
+        }
+    });
+
+    dainaCompleteBtn.addEventListener('click', async () => {
+        if (isProcessing) return;
+        if (!canAddTrip()) {
+            authOverlay.classList.remove('hidden');
+            authError.textContent = '⚠️ Please login';
+            return;
+        }
+        
+        const todayTrips = getTodayDainaTrips();
+        const unpaidTrips = todayTrips.filter(t => !t.isPaid && !t.isDone);
+        
+        if (unpaidTrips.length === 0) {
+            alert('No trips to complete.');
+            return;
+        }
+        
+        if (!confirm(`Complete ${unpaidTrips.length} trip(s)?`)) return;
+        
+        isProcessing = true;
+        dainaCompleteBtn.disabled = true;
+        
+        try {
+            const batch = db.batch();
+            for (const trip of unpaidTrips) {
+                batch.update(db.collection('trips').doc(trip.id), {
+                    isDone: true,
+                    completedAt: new Date().toISOString()
+                });
+            }
+            await batch.commit();
+            alert(`✅ ${unpaidTrips.length} trip(s) completed!`);
+        } catch (error) {
+            alert('Error: ' + error.message);
+        } finally {
+            setTimeout(() => { isProcessing = false; updateDainaUI(); }, 500);
+        }
+    });
+
+    dainaDoneBtn.addEventListener('click', () => {
+        const todayTrips = getTodayDainaTrips();
+        alert(`🎉 Daina's trips complete!\n\n📊 ${todayTrips.length} trips\n💰 ${todayTrips.reduce((s, t) => s + t.amount, 0).toLocaleString()}`);
+        updateDainaUI();
+    });
+
+    // ====================================================
+    // MARK AS PAID (Admin Only)
+    // ====================================================
+    markPaidBtn.addEventListener('click', async () => {
+        if (!currentUser) {
+            authOverlay.classList.remove('hidden');
+            return;
+        }
+        
+        if (!canMarkPaid()) {
+            showPermissionDenied();
+            alert('🔒 Only admins can mark as paid.');
+            return;
+        }
+
+        const now = new Date();
+        const monthName = now.toLocaleDateString('en-UG', { month: 'long', year: 'numeric' });
+        const currentMonthUnpaid = getCurrentMonthUnpaidTrips();
+        const currentMonthAdditional = getCurrentMonthAdditionalMoney();
+        
+        if (currentMonthUnpaid.length === 0 && currentMonthAdditional.length === 0) {
+            alert('No unpaid items this month.');
+            return;
+        }
+
+        const tripsTotal = currentMonthUnpaid.reduce((s,t) => s + t.amount, 0);
+        const additionalTotal = currentMonthAdditional.reduce((s,t) => s + t.amount, 0);
+        const grandTotal = tripsTotal + additionalTotal;
+
+        if (!confirm(`Mark ${monthName} as PAID?\n\n• Trips: ${currentMonthUnpaid.length} (${tripsTotal.toLocaleString()})\n• Additional: ${currentMonthAdditional.length} (${additionalTotal.toLocaleString()})\n• GRAND TOTAL: ${grandTotal.toLocaleString()}`)) return;
+
+        try {
+            await db.collection('paidMonths').add({
+                month: now.getMonth(),
+                year: now.getFullYear(),
+                monthName: monthName,
+                total: tripsTotal,
+                trips: currentMonthUnpaid.length,
+                additional: additionalTotal,
+                additionalCount: currentMonthAdditional.length,
+                grandTotal: grandTotal,
+                paidDate: new Date().toISOString(),
+                paidBy: currentUser.email,
+                userId: currentUser.uid
+            });
+
+            const batch = db.batch();
+            const paidMonthKey = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+            
+            // Mark trips as paid
+            for (const trip of currentMonthUnpaid) {
+                batch.update(db.collection('trips').doc(trip.id), {
+                    isPaid: true,
+                    paidMonth: paidMonthKey
+                });
+            }
+            
+            // Mark additional money as paid
+            for (const item of currentMonthAdditional) {
+                batch.update(db.collection('additionalMoney').doc(item.id), {
+                    isPaid: true,
+                    paidMonth: paidMonthKey
+                });
+            }
+            
+            await batch.commit();
+            alert(`✅ ${monthName} marked as paid!`);
+        } catch (error) {
+            alert('Error: ' + error.message);
+        }
+    });
+
+    // ====================================================
+    // CRUD
+    // ====================================================
+    async function deleteTrip(tripId) {
+        if (!canDelete()) {
+            showPermissionDenied();
+            return;
+        }
+        if (!confirm('Delete this trip?')) return;
+        try {
+            await db.collection('trips').doc(tripId).delete();
+        } catch (error) {
+            alert('Error: ' + error.message);
+        }
+    }
+
+    async function deleteAdditional(id) {
+        if (!canDelete()) {
+            showPermissionDenied();
+            alert('🔒 Only admins can delete.');
+            return;
+        }
+        if (!confirm('Delete this additional money entry?')) return;
+        try {
+            await db.collection('additionalMoney').doc(id).delete();
+            showNotification('✅ Entry deleted');
+        } catch (error) {
+            alert('Error: ' + error.message);
+        }
+    }
+
+    async function deleteAllTrips() {
+        if (!canDelete()) {
+            showPermissionDenied();
+            return;
+        }
+        if (!confirm('⚠️ Delete ALL trips?')) return;
+        if (!confirm('Are you sure?')) return;
+        
+        try {
+            const snapshot = await db.collection('trips').get();
+            const batch = db.batch();
+            snapshot.forEach(doc => batch.delete(doc.ref));
+            await batch.commit();
+            alert('✅ All trips deleted!');
+        } catch (error) {
+            alert('Error: ' + error.message);
+        }
+    }
+
+    // ====================================================
+    // SHARE TO WHATSAPP
+    // ====================================================
+    function shareToWhatsApp() {
+        if (trips.length === 0 && additionalMoney.length === 0) {
+            alert('No data to share!');
+            return;
+        }
+
+        const today = new Date();
+        const todayStr = today.toLocaleDateString('en-UG', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
+        
+        const totalTrips = trips.length;
+        const tripsTotal = trips.reduce((s, t) => s + t.amount, 0);
+        const additionalTotal = additionalMoney.reduce((s, a) => s + a.amount, 0);
+        const grandTotal = tripsTotal + additionalTotal;
+        
+        const pickups = trips.filter(t => t.type === 'pickup').length;
+        const dropoffs = trips.filter(t => t.type === 'dropoff').length;
+        const dainaTrips = trips.filter(t => t.dainaTrip).length;
+
+        const recentTrips = trips.slice(0, 5).map(t => {
+            const date = new Date(t.date);
+            const dateStr = date.toLocaleDateString('en-UG', { day:'numeric', month:'short' });
+            const emoji = t.type === 'pickup' ? '⬆️' : '⬇️';
+            return `${emoji} ${t.type.toUpperCase()} · ${dateStr} · ${t.amount.toLocaleString()}`;
+        }).join('\n');
+
+        const recentAdditional = additionalMoney.slice(0, 5).map(a => {
+            const date = new Date(a.date);
+            const dateStr = date.toLocaleDateString('en-UG', { day:'numeric', month:'short' });
+            return `➕ ${a.reason} · ${dateStr} · ${a.amount.toLocaleString()}`;
+        }).join('\n');
+
+        const userInfo = currentUser ? `👤 ${currentUser.email} (${currentUserRole})` : '👤 Viewer';
+
+        const message = `🚗 *TRIP TRACKER REPORT*
+📅 ${todayStr}
+${userInfo}
+
+👩 *DAINA TRIPS*: ${dainaTrips}
+
+💰 *SUMMARY*
+• Total Trips: ${totalTrips}
+• Trips Amount: ${tripsTotal.toLocaleString()}
+• Additional: ${additionalTotal.toLocaleString()}
+• *GRAND TOTAL: ${grandTotal.toLocaleString()}*
+
+📊 *BREAKDOWN*
+• Pick Ups: ${pickups}
+• Drop Offs: ${dropoffs}
+
+🕐 *Recent Trips*
+${recentTrips || 'None'}
+
+➕ *Recent Additional Money*
+${recentAdditional || 'None'}
+
+📱 *Shared from Trip Tracker App*`;
+
+        const encoded = encodeURIComponent(message);
+        window.open(`https://wa.me/?text=${encoded}`, '_blank');
+    }
+
+    // ====================================================
+    // HELPERS
+    // ====================================================
+    function getWeekNumber(date) {
+        const d = new Date(date);
+        d.setHours(0,0,0,0);
+        const yearStart = new Date(d.getFullYear(), 0, 1);
+        return Math.ceil((((d - yearStart) / 86400000) + yearStart.getDay() + 1) / 7);
+    }
+
+    function isToday(date) {
+        const today = new Date();
+        const d = new Date(date);
+        return d.getFullYear() === today.getFullYear() &&
+               d.getMonth() === today.getMonth() &&
+               d.getDate() === today.getDate();
+    }
+
+    function isThisWeek(date) {
+        const now = new Date();
+        const d = new Date(date);
+        return now.getFullYear() === d.getFullYear() && 
+               getWeekNumber(now) === getWeekNumber(d);
+    }
+
+    function isThisMonth(date) {
+        const now = new Date();
+        const d = new Date(date);
+        return now.getFullYear() === d.getFullYear() &&
+               now.getMonth() === d.getMonth();
+    }
+
+    function getCurrentMonthUnpaidTrips() {
+        const now = new Date();
+        return trips.filter(t => {
+            const d = new Date(t.date);
+            return d.getFullYear() === now.getFullYear() &&
+                   d.getMonth() === now.getMonth() &&
+                   !t.isPaid;
+        });
+    }
+
+    function getCurrentMonthAdditionalMoney() {
+        const now = new Date();
+        return additionalMoney.filter(a => {
+            const d = new Date(a.date);
+            return d.getFullYear() === now.getFullYear() &&
+                   d.getMonth() === now.getMonth() &&
+                   !a.isPaid;
+        });
+    }
+
+    // ====================================================
+    // RENDER ADDITIONAL MONEY
+    // ====================================================
+    function renderAdditionalMoney() {
+        if (additionalMoney.length === 0) {
+            additionalList.innerHTML = '<div class="empty">No additional money entries yet.</div>';
+            additionalCount.textContent = '0 entries';
+            return;
+        }
+
+        additionalCount.textContent = additionalMoney.length + ' entries';
+        const canDel = canDelete();
+
+        additionalList.innerHTML = additionalMoney.slice(0, 30).map(a => {
+            const date = new Date(a.date);
+            const dateStr = date.toLocaleDateString('en-UG', { day:'numeric', month:'short' });
+            const timeStr = date.toLocaleTimeString('en-UG', { hour:'2-digit', minute:'2-digit' });
+            const paidStatus = a.isPaid ? '✅' : '⏳';
+            return `
+                <div class="additional-item">
+                    <div>
+                        <div class="reason">➕ ${a.reason} ${paidStatus}</div>
+                        <div class="date">${dateStr} ${timeStr}${a.note ? ' · ' + a.note : ''}</div>
+                    </div>
+                    <div style="text-align:right;">
+                        <div class="amount">${a.amount.toLocaleString()}</div>
+                        <button class="del" data-additional-id="${a.id}" ${!canDel ? 'disabled' : ''}>✕</button>
+                    </div>
+                </div>
+            `;
+        }).join('');
+
+        document.querySelectorAll('[data-additional-id]').forEach(btn => {
+            btn.addEventListener('click', function() {
+                deleteAdditional(this.dataset.additionalId);
+            });
+        });
+    }
+
+    // ====================================================
+    // RENDER PAID HISTORY
+    // ====================================================
+    function renderPaidHistory() {
+        if (paidMonths.length === 0) {
+            paidHistoryList.innerHTML = '<div class="empty">No paid months yet.</div>';
+            paidCount.textContent = '0 months';
+            return;
+        }
+
+        paidCount.textContent = paidMonths.length + ' months';
+        paidHistoryList.innerHTML = paidMonths.map(p => `
+            <div class="paid-history-item">
+                <div>
+                    <div class="month-name">📅 ${p.monthName}</div>
+                    <div class="month-date">Paid: ${new Date(p.paidDate).toLocaleDateString('en-UG')}</div>
+                    ${p.additional ? `<div class="month-date">➕ Additional: ${p.additional.toLocaleString()}</div>` : ''}
+                </div>
+                <div style="text-align:right;">
+                    <div class="month-amount">${(p.grandTotal || p.total).toLocaleString()}</div>
+                    <div style="font-size:12px; color:#64748b;">${p.trips} trips</div>
+                </div>
+            </div>
+        `).join('');
+    }
+
+    // ====================================================
+    // RENDER
+    // ====================================================
+    function render() {
+        // Stats - all trips
+        const todayTrips = trips.filter(t => isToday(t.date));
+        const weekTrips = trips.filter(t => isThisWeek(t.date));
+        const monthTrips = trips.filter(t => isThisMonth(t.date));
+        
+        const todayAmt = todayTrips.reduce((s, t) => s + t.amount, 0);
+        const weekAmt = weekTrips.reduce((s, t) => s + t.amount, 0);
+        const monthAmt = monthTrips.reduce((s, t) => s + t.amount, 0);
+        const allAmt = trips.reduce((s, t) => s + t.amount, 0);
+        
+        // Monthly unpaid
+        const currentMonthUnpaid = getCurrentMonthUnpaidTrips();
+        const currentMonthAdditional = getCurrentMonthAdditionalMoney();
+        const monthUnpaidTotal = currentMonthUnpaid.reduce((s, t) => s + t.amount, 0);
+        const monthAdditionalTotal = currentMonthAdditional.reduce((s, a) => s + a.amount, 0);
+        const grandTotal = monthUnpaidTotal + monthAdditionalTotal;
+        
+        todayTotal.textContent = todayAmt.toLocaleString();
+        weekTotal.textContent = weekAmt.toLocaleString();
+        monthTotal.textContent = monthAmt.toLocaleString();
+        allTotal.textContent = allAmt.toLocaleString();
+        tripCount.textContent = trips.length + ' total trips';
+
+        const now = new Date();
+        currentMonthLabel.textContent = now.toLocaleDateString('en-UG', { month: 'long', year: 'numeric' });
+        monthlyDue.textContent = monthUnpaidTotal.toLocaleString();
+        monthlyTripsCount.textContent = currentMonthUnpaid.length;
+        monthlyAdditional.textContent = monthAdditionalTotal.toLocaleString();
+        monthlyGrandTotal.textContent = grandTotal.toLocaleString();
+
+        // Mark as paid button
+        const isAdmin = currentUserRole === 'admin';
+        if (isAdmin) {
+            if (currentMonthUnpaid.length > 0 || currentMonthAdditional.length > 0) {
+                markPaidBtn.disabled = false;
+                markPaidBtn.textContent = `✅ Mark ${now.toLocaleDateString('en-UG', { month: 'long' })} as Paid (${grandTotal.toLocaleString()})`;
+            } else {
+                markPaidBtn.disabled = true;
+                markPaidBtn.textContent = '✅ No unpaid items this month';
+            }
+        } else if (currentUser) {
+            markPaidBtn.disabled = true;
+            markPaidBtn.textContent = '🔒 Mark as Paid (Admin Only)';
+        } else {
+            markPaidBtn.disabled = true;
+            markPaidBtn.textContent = '🔒 Login to mark as paid';
+        }
+
+        if (grandTotal === 0) {
+            paymentStatus.textContent = '✅ All paid!';
+            paymentStatus.style.color = '#4ade80';
+        } else if (grandTotal >= 30000) {
+            paymentStatus.textContent = '💰 Ready to Pay';
+            paymentStatus.style.color = '#fbbf24';
+        } else {
+            paymentStatus.textContent = `⏰ ${currentMonthUnpaid.length + currentMonthAdditional.length} items`;
+            paymentStatus.style.color = '#f87171';
+        }
+
+        // Trip list
+        if (trips.length === 0) {
+            tripList.innerHTML = '<div class="empty">No trips yet.</div>';
+            return;
+        }
+
+        const canDel = canDelete();
+        tripList.innerHTML = trips.slice(0, 20).map((t) => {
+            const typeClass = t.type === 'pickup' ? 'pickup' : 'dropoff';
+            const typeLabel = t.type === 'pickup' ? '⬆️ Pick Up' : '⬇️ Drop Off';
+            const date = new Date(t.date);
+            const dateStr = date.toLocaleDateString('en-UG', { day:'numeric', month:'short' });
+            const timeStr = date.toLocaleTimeString('en-UG', { hour:'2-digit', minute:'2-digit' });
+            const name = t.dainaTrip ? '👩 Daina' : '';
+            
+            let status = '';
+            if (t.isPaid) status = '<span class="status-paid">✅ Paid</span>';
+            else if (t.isDone) status = '<span class="status-done">🎉 Done</span>';
+            else status = '<span class="status-unpaid">⏳ Unpaid</span>';
+            
+            return `
+                <div class="trip-item">
+                    <span>
+                        <span class="type ${typeClass}">${typeLabel}</span>
+                        <span style="color:#94a3b8;font-size:12px;">${dateStr} ${timeStr}</span>
+                        <span style="color:#64748b;font-size:10px;margin-left:6px;">${name}</span>
+                        ${status}
+                    </span>
+                    <span>
+                        ${t.amount.toLocaleString()}
+                        <button class="del" data-id="${t.id}" ${!canDel ? 'disabled' : ''}>✕</button>
+                    </span>
+                </div>
+            `;
+        }).join('');
+
+        document.querySelectorAll('.del[data-id]').forEach(btn => {
+            btn.addEventListener('click', function() {
+                deleteTrip(this.dataset.id);
+            });
+        });
+    }
+
+    // ====================================================
+    // EVENT LISTENERS
+    // ====================================================
+    resetBtn.addEventListener('click', deleteAllTrips);
+    document.getElementById('shareBtn').addEventListener('click', shareToWhatsApp);
+
+    // ====================================================
+    // SCHEDULER
+    // ====================================================
+    setInterval(checkAndSendReminders, 60000);
+    setInterval(() => { render(); updateDainaUI(); }, 5000);
+
+    // ====================================================
+    // INIT
+    // ====================================================
+    startTripListener();
+    startPaidListener();
+    startAdditionalListener();
+
+    console.log('🚗 Trip Tracker with Additional Money loaded!');
+    console.log('➕ Additional Money button added before Share');
+</script>
+</body>
+</html>
