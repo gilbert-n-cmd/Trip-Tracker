@@ -99,9 +99,6 @@
         .btn-daina-complete:disabled { opacity: 0.3; cursor: not-allowed; }
         .btn-daina-done { background: #f59e0b; color: #fff; }
         .btn-daina-done:disabled { opacity: 0.3; cursor: not-allowed; }
-        /* ⭐ NEW: Backfill button */
-        .btn-daina-backfill { background: #0891b2; color: #fff; }
-        .btn-daina-backfill:disabled { opacity: 0.3; cursor: not-allowed; }
         
         .btn-additional {
             background: #f97316; color: #fff; border: none; padding: 14px; border-radius: 12px;
@@ -583,7 +580,6 @@
                 <div id="autoTripStatus" style="margin-top:6px; font-size:12px; color:#94a3b8;">
                     Checking today's auto-trip status...
                 </div>
-                <button class="btn-sms-test" id="backfillMonthBtn" style="background:#0891b2;">📅 Backfill Missing Days</button>
             </div>
             
             <div class="debug-info" id="debugInfo">🔍 Waiting for trips...</div>
@@ -1080,7 +1076,7 @@
     // ====================================================
     // STATE
     // ====================================================
-    const RATE = 2000;
+    const RATE = 3000;
     const PHONE_NUMBER = "0779905605";
     let trips = [];
     let paidMonths = [];
@@ -1114,7 +1110,6 @@
     const AUTO_PICKUP_HOUR = 12;
     const AUTO_DROPOFF_HOUR = 18;
     const AUTO_CHECK_INTERVAL = 30000;
-    const BACKFILL_DAYS = 30;   // ⭐ how far back to backfill
 
     // ====================================================
     // DOM REFS
@@ -1246,7 +1241,6 @@
     const nextReportTime = $('nextReportTime');
     
     const autoTripStatusEl = $('autoTripStatus');
-    const backfillMonthBtn = $('backfillMonthBtn');   // ⭐ NEW
     
     const exportCsvBtn = $('exportCsvBtn');
     const exportPdfBtn = $('exportPdfBtn');
@@ -2671,7 +2665,7 @@
     testSmsBtn.addEventListener('click', () => sendSMS(`🧪 Test\n${new Date().toLocaleTimeString('en-UG')}`));
 
     // ====================================================
-    // ⭐ AUTO-TRIP SYSTEM (now with backfill)
+    // ⭐ AUTO-TRIP SYSTEM
     // ====================================================
 
     // Check if the auto-trip for a given key has already run today
@@ -2685,7 +2679,7 @@
         localStorage.setItem(`autoTrip_${key}`, today);
     }
 
-    // ⭐ NEW: Check if a trip of a given type exists on ANY specific date
+    // Check if a trip of a given type exists on ANY specific date
     function tripExistsOnDate(type, date) {
         const target = new Date(date);
         const y = target.getFullYear();
@@ -2699,7 +2693,7 @@
         });
     }
 
-    // ⭐ NEW: Create a trip with a SPECIFIC date/time (for backfill)
+    // Create a trip with a SPECIFIC date/time
     async function createTripForDate(type, dateObj) {
         try {
             await db.collection('trips').add({
@@ -2716,15 +2710,15 @@
                 backfilled: true,
                 createdAt: firebase.firestore.FieldValue.serverTimestamp()
             });
-            console.log(`✅ Backfilled ${type} for ${dateObj.toLocaleDateString()}`);
+            console.log(`✅ Created ${type} for ${dateObj.toLocaleDateString()}`);
             return true;
         } catch (e) {
-            console.error('Backfill error:', e);
+            console.error('Create error:', e);
             return false;
         }
     }
 
-    // ⭐ Main auto-trip creator (used for TODAY)
+    // Main auto-trip creator (for TODAY)
     async function autoCreateTrip(type) {
         if (!AUTO_TRIP_ENABLED) return false;
         const key = type;
@@ -2749,30 +2743,83 @@
             });
             markAutoRanToday(key);
             const label = type === 'pickup' ? '⬆️ Pick Up' : '⬇️ Drop Off';
-            console.log(`✅ Auto-created ${type} trip`);
+            console.log(`✅ Auto-created ${type} trip for TODAY`);
             showNotification(`🤖 Auto-added ${label} trip`);
-            try {
-                await sendSMS(`🚗 Auto ${label} trip created for Daina`);
-            } catch (e) {}
+            try { await sendSMS(`🚗 Auto ${label} trip created for Daina`); } catch (e) {}
             return true;
         } catch (e) {
-            console.error('Auto-create trip error:', e);
+            console.error('Auto-create error:', e);
             return false;
         }
     }
 
-    // ⭐ Clock checker
+    // Clock checker (every 30s)
     function checkAndSendReminders() {
         const h = new Date().getHours();
-        if (h >= AUTO_PICKUP_HOUR && !hasAutoRunToday('pickup')) {
-            autoCreateTrip('pickup');
+        if (h >= AUTO_PICKUP_HOUR && !hasAutoRunToday('pickup')) autoCreateTrip('pickup');
+        if (h >= AUTO_DROPOFF_HOUR && !hasAutoRunToday('dropoff')) autoCreateTrip('dropoff');
+    }
+
+    // ⭐ NEW: Backfill ONLY yesterday
+    async function backfillYesterday() {
+        if (trips.length === 0) {
+            console.log('⏭️ No trips loaded yet, skip yesterday backfill');
+            return;
         }
-        if (h >= AUTO_DROPOFF_HOUR && !hasAutoRunToday('dropoff')) {
-            autoCreateTrip('dropoff');
+        
+        const now = new Date();
+        const yesterday = new Date(now);
+        yesterday.setDate(now.getDate() - 1);
+        yesterday.setHours(0, 0, 0, 0);
+        
+        const yDateStr = yesterday.toISOString().split('T')[0];
+        
+        // Don't run this twice a day
+        if (localStorage.getItem('lastBackfillDate') === yDateStr) {
+            console.log('⏭️ Yesterday backfill already done for', yDateStr);
+            return;
+        }
+        
+        // Only backfill if yesterday is AFTER the earliest recorded trip
+        const earliestTime = Math.min(...trips.map(t => new Date(t.date).getTime()));
+        const earliestDate = new Date(earliestTime);
+        earliestDate.setHours(0, 0, 0, 0);
+        
+        if (yesterday < earliestDate) {
+            console.log('⏭️ Yesterday is before earliest trip, skip');
+            localStorage.setItem('lastBackfillDate', yDateStr);
+            return;
+        }
+        
+        let created = 0;
+        
+        // --- CHECK & CREATE YESTERDAY'S PICKUP ---
+        if (!tripExistsOnDate('pickup', yesterday)) {
+            const pickupTime = new Date(yesterday);
+            pickupTime.setHours(12, 0, 0, 0);
+            const ok = await createTripForDate('pickup', pickupTime);
+            if (ok) created++;
+        }
+        
+        // --- CHECK & CREATE YESTERDAY'S DROPOFF ---
+        if (!tripExistsOnDate('dropoff', yesterday)) {
+            const dropoffTime = new Date(yesterday);
+            dropoffTime.setHours(18, 0, 0, 0);
+            const ok = await createTripForDate('dropoff', dropoffTime);
+            if (ok) created++;
+        }
+        
+        localStorage.setItem('lastBackfillDate', yDateStr);
+        
+        if (created > 0) {
+            console.log(`✅ Backfilled ${created} trips for yesterday (${yDateStr})`);
+            showNotification(`📅 Added ${created} missing trip(s) for yesterday`);
+        } else {
+            console.log(`✅ Yesterday (${yDateStr}) is complete — nothing to backfill`);
         }
     }
 
-    // ⭐ Smart catch-up: today + backfill previous days
+    // Smart catch-up: today + yesterday
     async function catchUpAutoTrips() {
         const now = new Date();
         const h = now.getHours();
@@ -2795,89 +2842,11 @@
             }
         }
         
-        // ---- BACKFILL PREVIOUS DAYS ----
-        await backfillMissingDays();
+        // ---- YESTERDAY ----
+        await backfillYesterday();
     }
 
-    // ⭐ Backfill previous days silently (no prompt) — "yesterday and prior"
-    async function backfillMissingDays() {
-        if (trips.length === 0) {
-            console.log('⏭️ No trips loaded, skip backfill');
-            return;
-        }
-        
-        // Don't spam backfill every 30s — once per hour is enough
-        const now = new Date();
-        const hourKey = `${now.toISOString().split('T')[0]}_${now.getHours()}`;
-        if (localStorage.getItem('lastBackfillHour') === hourKey) return;
-        localStorage.setItem('lastBackfillHour', hourKey);
-        
-        // Find the earliest date we have any trip for
-        const earliestTime = Math.min(...trips.map(t => new Date(t.date).getTime()));
-        const earliestDate = new Date(earliestTime);
-        earliestDate.setHours(0, 0, 0, 0);
-        
-        const missingDays = [];
-        // Check last BACKFILL_DAYS days (skip today)
-        for (let i = 1; i <= BACKFILL_DAYS; i++) {
-            const day = new Date(now);
-            day.setDate(now.getDate() - i);
-            day.setHours(0, 0, 0, 0);
-            
-            // Don't backfill before the earliest recorded trip
-            if (day < earliestDate) continue;
-            
-            const hasPickup = tripExistsOnDate('pickup', day);
-            const hasDropoff = tripExistsOnDate('dropoff', day);
-            
-            if (!hasPickup) missingDays.push({ date: day, type: 'pickup' });
-            if (!hasDropoff) missingDays.push({ date: day, type: 'dropoff' });
-        }
-        
-        if (missingDays.length === 0) {
-            console.log('✅ No missing days to backfill');
-            updateAutoTripStatus();
-            return;
-        }
-        
-        console.log(`📅 Backfilling ${missingDays.length} missing trips...`);
-        
-        let created = 0;
-        for (const item of missingDays) {
-            const tripTime = new Date(item.date);
-            tripTime.setHours(item.type === 'pickup' ? 12 : 18, 0, 0, 0);
-            
-            const ok = await createTripForDate(item.type, tripTime);
-            if (ok) created++;
-        }
-        
-        if (created > 0) {
-            showNotification(`📅 Backfilled ${created} missing trips`);
-            console.log(`✅ Backfilled ${created} trips total`);
-        }
-        updateAutoTripStatus();
-    }
-
-    // ⭐ Manual trigger for the backfill button
-    async function manualBackfill() {
-        if (!canAddTrip()) {
-            authOverlay.classList.remove('hidden');
-            authError.textContent = '⚠️ Please login to backfill';
-            return;
-        }
-        
-        if (!confirm(`📅 Backfill missing trips?\n\nThis will scan the last ${BACKFILL_DAYS} days and add any missing pickup/dropoff trips.\n\nExisting trips will NOT be touched.`)) return;
-        
-        // Force re-check by clearing the hourly flag
-        localStorage.removeItem('lastBackfillHour');
-        
-        showNotification('⏳ Scanning for missing days...');
-        await backfillMissingDays();
-    }
-    
-    backfillMonthBtn.addEventListener('click', manualBackfill);
-
-    // ⭐ Update the auto-trip status text in the UI
+    // Update the auto-trip status text in the UI
     function updateAutoTripStatus() {
         if (!autoTripStatusEl) return;
         const now = new Date();
@@ -2887,21 +2856,12 @@
         const hasPickup = today.some(t => t.type === 'pickup');
         const hasDropoff = today.some(t => t.type === 'dropoff');
         
-        // Count missing days too
-        let missingCount = 0;
-        if (trips.length > 0) {
-            const earliestTime = Math.min(...trips.map(t => new Date(t.date).getTime()));
-            const earliestDate = new Date(earliestTime);
-            earliestDate.setHours(0, 0, 0, 0);
-            for (let i = 1; i <= BACKFILL_DAYS; i++) {
-                const day = new Date(now);
-                day.setDate(now.getDate() - i);
-                day.setHours(0, 0, 0, 0);
-                if (day < earliestDate) continue;
-                if (!tripExistsOnDate('pickup', day)) missingCount++;
-                if (!tripExistsOnDate('dropoff', day)) missingCount++;
-            }
-        }
+        // Check yesterday status
+        const yesterday = new Date(now);
+        yesterday.setDate(now.getDate() - 1);
+        const yHasPickup = tripExistsOnDate('pickup', yesterday);
+        const yHasDropoff = tripExistsOnDate('dropoff', yesterday);
+        const yComplete = yHasPickup && yHasDropoff;
         
         let status = '';
         if (hasPickup && hasDropoff) {
@@ -2917,8 +2877,11 @@
             status = `⚠️ Today: Pickup missing`;
         }
         
-        if (missingCount > 0) {
-            status += ` · 📅 ${missingCount} missing in last ${BACKFILL_DAYS} days`;
+        // Add yesterday status
+        if (yComplete) {
+            status += ` · 📅 Yesterday ✅`;
+        } else {
+            status += ` · 📅 Yesterday: ${yHasPickup ? '' : 'pickup'}${!yHasPickup && !yHasDropoff ? ' & ' : ''}${yHasDropoff ? '' : 'dropoff'} missing`;
         }
         
         autoTripStatusEl.textContent = status;
@@ -3413,7 +3376,7 @@
     startAdditionalListener();
     startPaymentsListener();
     
-    // ⭐ Catch-up runs 5 seconds after load (backfill included)
+    // ⭐ Catch-up runs 5 seconds after load (today + yesterday backfill)
     setTimeout(catchUpAutoTrips, 5000);
     setInterval(updateAutoTripStatus, 30000);
 
@@ -3422,7 +3385,7 @@
     console.log('💰 Payment History tab enabled');
     console.log('💵 Auto-Distribute (FIFO) enabled');
     console.log(`🤖 Auto-trip: Pickup @ ${AUTO_PICKUP_HOUR}:00 · Dropoff @ ${AUTO_DROPOFF_HOUR}:00`);
-    console.log(`📅 Backfill: last ${BACKFILL_DAYS} days`);
+    console.log(`📅 Backfill: yesterday only`);
 </script>
 </body>
 </html>
