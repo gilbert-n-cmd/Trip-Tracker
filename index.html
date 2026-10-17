@@ -99,6 +99,8 @@
         .btn-daina-complete:disabled { opacity: 0.3; cursor: not-allowed; }
         .btn-daina-done { background: #f59e0b; color: #fff; }
         .btn-daina-done:disabled { opacity: 0.3; cursor: not-allowed; }
+        /* ⭐ NEW: Admin prices button */
+        .btn-daina-prices { background: linear-gradient(135deg, #f59e0b, #d97706); color: #fff; }
         
         .btn-additional {
             background: #f97316; color: #fff; border: none; padding: 14px; border-radius: 12px;
@@ -560,6 +562,11 @@
                 <button class="btn-daina btn-daina-done" id="dainaDoneBtn" style="display:none;">🎉 Done</button>
             </div>
             
+            <!-- ⭐ NEW: Admin-only prices button -->
+            <div class="daina-actions" id="adminPricesRow" style="display:none;">
+                <button class="btn-daina btn-daina-prices" id="setPricesBtn">💲 Set Trip Prices</button>
+            </div>
+            
             <div class="sms-status">
                 <div style="display:flex; justify-content:space-between; align-items:center;">
                     <div>📱 SMS Reminders <span class="sms-active">● Active</span></div>
@@ -648,7 +655,7 @@
                 <div class="month-amount" id="monthlyDue">0</div>
                 <div class="month-details">
                     <span>Trips: <strong id="monthlyTripsCount">0</strong></span>
-                    <span>Rate: <strong>2,000</strong></span>
+                    <span>Rate: <strong id="rateDisplay">2,000</strong></span>
                     <span>Status: <strong id="paymentStatus">Pending</strong></span>
                 </div>
                 <div style="margin-top:10px; padding-top:10px; border-top:1px solid #1e293b;">
@@ -819,6 +826,33 @@
             <div class="modal-actions">
                 <button class="btn btn-cancel" id="modalCancelBtn">Cancel</button>
                 <button class="btn btn-save" id="modalSaveBtn" disabled>💾 Save</button>
+            </div>
+        </div>
+    </div>
+    
+    <!-- ⭐ NEW: PRICE SETTINGS MODAL -->
+    <div id="pricesModal" class="modal-overlay hidden">
+        <div class="modal-box">
+            <h2>💲 Set Trip Prices</h2>
+            <div class="modal-sub">Admin only · affects new trips going forward</div>
+            
+            <div class="input-group">
+                <label>⬆️ Pick Up Price (UGX)</label>
+                <input type="number" id="pickupPriceInput" placeholder="e.g. 3000" min="0" step="100" class="pay-amount-input" style="color:#60a5fa;" />
+            </div>
+            
+            <div class="input-group">
+                <label>⬇️ Drop Off Price (UGX)</label>
+                <input type="number" id="dropoffPriceInput" placeholder="e.g. 3000" min="0" step="100" class="pay-amount-input" style="color:#a78bfa;" />
+            </div>
+            
+            <div style="background:#0f172a; border-radius:10px; padding:12px; margin-top:8px; font-size:12px; color:#94a3b8; border-left:3px solid #f59e0b;">
+                💡 <strong>Note:</strong> This only affects <strong>new trips</strong>. Existing trips keep their original amount.
+            </div>
+            
+            <div class="modal-actions">
+                <button class="btn btn-cancel" id="pricesCancelBtn">Cancel</button>
+                <button class="btn btn-save" id="pricesSaveBtn" style="background:#f59e0b;">💾 Save Prices</button>
             </div>
         </div>
     </div>
@@ -1076,7 +1110,12 @@
     // ====================================================
     // STATE
     // ====================================================
-    const RATE = 2000;
+    const DEFAULT_PICKUP_PRICE = 2000;
+    const DEFAULT_DROPOFF_PRICE = 2000;
+    let currentPickupPrice = DEFAULT_PICKUP_PRICE;    // ⭐ dynamic
+    let currentDropoffPrice = DEFAULT_DROPOFF_PRICE;  // ⭐ dynamic
+    let unsubscribePrices = null;                     // ⭐ live listener
+
     const PHONE_NUMBER = "0779905605";
     let trips = [];
     let paidMonths = [];
@@ -1110,7 +1149,6 @@
     const AUTO_PICKUP_HOUR = 12;
     const AUTO_DROPOFF_HOUR = 18;
     const AUTO_CHECK_INTERVAL = 30000;
-    // ⭐ Weekend skip: no auto trips on Saturday (6) or Sunday (0)
     const SKIP_WEEKENDS = true;
 
     // ====================================================
@@ -1244,6 +1282,16 @@
     
     const autoTripStatusEl = $('autoTripStatus');
     
+    // ⭐ NEW: Prices DOM
+    const adminPricesRow = $('adminPricesRow');
+    const setPricesBtn = $('setPricesBtn');
+    const pricesModal = $('pricesModal');
+    const pickupPriceInput = $('pickupPriceInput');
+    const dropoffPriceInput = $('dropoffPriceInput');
+    const pricesCancelBtn = $('pricesCancelBtn');
+    const pricesSaveBtn = $('pricesSaveBtn');
+    const rateDisplay = $('rateDisplay');
+    
     const exportCsvBtn = $('exportCsvBtn');
     const exportPdfBtn = $('exportPdfBtn');
     
@@ -1253,11 +1301,41 @@
     const psToday = $('psToday');
 
     // ====================================================
+    // PRICE HELPERS
+    // ====================================================
+    function priceForType(type) {
+        return type === 'pickup' ? currentPickupPrice : currentDropoffPrice;
+    }
+
+    function loadPrices() {
+        if (unsubscribePrices) unsubscribePrices();
+        unsubscribePrices = db.collection('settings').doc('tripPrices').onSnapshot(doc => {
+            if (doc.exists) {
+                const d = doc.data();
+                currentPickupPrice = Number(d.pickupPrice) || DEFAULT_PICKUP_PRICE;
+                currentDropoffPrice = Number(d.dropoffPrice) || DEFAULT_DROPOFF_PRICE;
+            } else {
+                currentPickupPrice = DEFAULT_PICKUP_PRICE;
+                currentDropoffPrice = DEFAULT_DROPOFF_PRICE;
+            }
+            // Update the display
+            if (rateDisplay) {
+                rateDisplay.textContent = 
+                    `${currentPickupPrice.toLocaleString()} / ${currentDropoffPrice.toLocaleString()}`;
+            }
+            render(); updateDainaUI();
+        }, err => {
+            console.error('Price load error:', err);
+        });
+    }
+
+    // ====================================================
     // PERMISSIONS
     // ====================================================
     const canDelete = () => currentUserRole === 'admin';
     const canMarkPaid = () => currentUser && (currentUserRole === 'admin' || currentUserRole === 'user');
     const canAddTrip = () => currentUser && (currentUserRole === 'admin' || currentUserRole === 'user');
+    const canSetPrices = () => currentUserRole === 'admin';
     const isLoggedIn = () => currentUser !== null;
 
     // ====================================================
@@ -1276,6 +1354,49 @@
     });
     closeBannerBtn.addEventListener('click', () => installBanner.classList.add('hidden'));
     window.addEventListener('appinstalled', () => installBanner.classList.add('hidden'));
+
+    // ====================================================
+    // PRICES MODAL
+    // ====================================================
+    setPricesBtn.addEventListener('click', () => {
+        if (!canSetPrices()) { showPermissionDenied(); return; }
+        pickupPriceInput.value = currentPickupPrice;
+        dropoffPriceInput.value = currentDropoffPrice;
+        pricesModal.classList.remove('hidden');
+        setTimeout(() => pickupPriceInput.focus(), 300);
+    });
+
+    pricesCancelBtn.addEventListener('click', () => pricesModal.classList.add('hidden'));
+    pricesModal.addEventListener('click', (e) => {
+        if (e.target === pricesModal) pricesModal.classList.add('hidden');
+    });
+
+    pricesSaveBtn.addEventListener('click', async () => {
+        if (!canSetPrices()) { showPermissionDenied(); return; }
+        const pickup = parseFloat(pickupPriceInput.value);
+        const dropoff = parseFloat(dropoffPriceInput.value);
+        if (!pickup || pickup <= 0 || !dropoff || dropoff <= 0) {
+            alert('Please enter valid prices for both');
+            return;
+        }
+        pricesSaveBtn.disabled = true;
+        pricesSaveBtn.textContent = '💾 Saving...';
+        try {
+            await db.collection('settings').doc('tripPrices').set({
+                pickupPrice: pickup,
+                dropoffPrice: dropoff,
+                updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
+                updatedBy: currentUser.email
+            }, { merge: true });
+            pricesModal.classList.add('hidden');
+            showNotification(`💲 Prices updated · Pickup: ${pickup.toLocaleString()} · Dropoff: ${dropoff.toLocaleString()}`);
+        } catch (e) {
+            alert('Error: ' + e.message);
+        } finally {
+            pricesSaveBtn.disabled = false;
+            pricesSaveBtn.textContent = '💾 Save Prices';
+        }
+    });
 
     // ====================================================
     // FILTERS
@@ -1782,7 +1903,7 @@
             let statusClass = 'unpaid';
             let statusLabel = '⏳ Unpaid';
             if (isPaid) { statusClass = 'paid'; statusLabel = '✅ Paid'; }
-            else if (m.unpaidTrips > 0 && m.totalOwed < (m.unpaidTrips * RATE)) { statusClass = 'partial'; statusLabel = '🟡 Partial'; }
+            else if (m.unpaidTrips > 0 && m.totalOwed < (m.unpaidTrips * currentPickupPrice)) { statusClass = 'partial'; statusLabel = '🟡 Partial'; }
             const dimmed = isPaid ? 'style="opacity:0.5;"' : '';
             return `
                 <div class="month-row" data-month-key="${m.key}" ${isPaid ? '' : 'data-clickable="true"'} ${dimmed}>
@@ -2510,7 +2631,7 @@
             trips = [];
             snap.forEach(doc => {
                 const d = doc.data();
-                trips.push({ id: doc.id, date: d.date, type: d.type, amount: d.amount || RATE,
+                trips.push({ id: doc.id, date: d.date, type: d.type, amount: d.amount || priceForType(d.type),
                     userId: d.userId || 'unknown', userEmail: d.userEmail || 'Unknown',
                     isPaid: d.isPaid || false, isDone: d.isDone || false,
                     paidMonth: d.paidMonth || null, dainaTrip: d.dainaTrip || false,
@@ -2581,6 +2702,10 @@
             const isAdmin = currentUserRole === 'admin';
             resetBtn.disabled = !isAdmin;
             resetBtn.textContent = isAdmin ? '🗑️ Delete All My Trips' : '🔒 Delete (Admin Only)';
+            // ⭐ NEW: Show admin prices button
+            if (adminPricesRow) {
+                adminPricesRow.style.display = isAdmin ? 'flex' : 'none';
+            }
             authOverlay.classList.add('hidden');
         } else {
             currentUser = null; currentUserRole = null;
@@ -2588,6 +2713,7 @@
             loginToggleBtn.textContent = 'Login';
             loginToggleBtn.className = 'btn-login-prompt';
             resetBtn.disabled = true;
+            if (adminPricesRow) adminPricesRow.style.display = 'none';
         }
         render(); updateDainaUI();
     }
@@ -2667,16 +2793,14 @@
     testSmsBtn.addEventListener('click', () => sendSMS(`🧪 Test\n${new Date().toLocaleTimeString('en-UG')}`));
 
     // ====================================================
-    // ⭐ AUTO-TRIP SYSTEM (with weekend skip)
+    // ⭐ AUTO-TRIP SYSTEM
     // ====================================================
 
-    // ⭐ NEW: Check if a given date is a weekend (Sat or Sun)
     function isWeekend(date) {
-        const day = new Date(date).getDay();  // 0 = Sunday, 6 = Saturday
+        const day = new Date(date).getDay();
         return day === 0 || day === 6;
     }
 
-    // Check if the auto-trip for a given key has already run today
     function hasAutoRunToday(key) {
         const today = new Date().toISOString().split('T')[0];
         return localStorage.getItem(`autoTrip_${key}`) === today;
@@ -2687,7 +2811,6 @@
         localStorage.setItem(`autoTrip_${key}`, today);
     }
 
-    // Check if a trip of a given type exists on ANY specific date
     function tripExistsOnDate(type, date) {
         const target = new Date(date);
         const y = target.getFullYear();
@@ -2701,13 +2824,14 @@
         });
     }
 
-    // Create a trip with a SPECIFIC date/time
     async function createTripForDate(type, dateObj) {
         try {
+            // ⭐ NEW: use dynamic price
+            const amount = priceForType(type);
             await db.collection('trips').add({
                 date: dateObj.toISOString(),
                 type: type,
-                amount: RATE,
+                amount: amount,
                 userId: 'auto-system',
                 userEmail: 'auto@system',
                 isPaid: false,
@@ -2718,7 +2842,7 @@
                 backfilled: true,
                 createdAt: firebase.firestore.FieldValue.serverTimestamp()
             });
-            console.log(`✅ Created ${type} for ${dateObj.toLocaleDateString()}`);
+            console.log(`✅ Created ${type} for ${dateObj.toLocaleDateString()} @ ${amount}`);
             return true;
         } catch (e) {
             console.error('Create error:', e);
@@ -2726,16 +2850,12 @@
         }
     }
 
-    // Main auto-trip creator (for TODAY)
     async function autoCreateTrip(type) {
         if (!AUTO_TRIP_ENABLED) return false;
-        
-        // ⭐ NEW: Skip weekends
         if (SKIP_WEEKENDS && isWeekend(new Date())) {
             console.log(`⏭️ Weekend — skipping auto ${type} for today`);
             return false;
         }
-        
         const key = type;
         if (hasAutoRunToday(key)) return false;
         if (tripExistsOnDate(type, new Date())) {
@@ -2743,10 +2863,12 @@
             return false;
         }
         try {
+            // ⭐ NEW: use dynamic price
+            const amount = priceForType(type);
             await db.collection('trips').add({
                 date: new Date().toISOString(),
                 type: type,
-                amount: RATE,
+                amount: amount,
                 userId: 'auto-system',
                 userEmail: 'auto@system',
                 isPaid: false,
@@ -2758,9 +2880,9 @@
             });
             markAutoRanToday(key);
             const label = type === 'pickup' ? '⬆️ Pick Up' : '⬇️ Drop Off';
-            console.log(`✅ Auto-created ${type} trip for TODAY`);
-            showNotification(`🤖 Auto-added ${label} trip`);
-            try { await sendSMS(`🚗 Auto ${label} trip created for Daina`); } catch (e) {}
+            console.log(`✅ Auto-created ${type} trip for TODAY @ ${amount}`);
+            showNotification(`🤖 Auto-added ${label} trip (${amount.toLocaleString()})`);
+            try { await sendSMS(`🚗 Auto ${label} trip created for Daina — ${amount.toLocaleString()} UGX`); } catch (e) {}
             return true;
         } catch (e) {
             console.error('Auto-create error:', e);
@@ -2768,18 +2890,13 @@
         }
     }
 
-    // Clock checker (every 30s)
     function checkAndSendReminders() {
-        // ⭐ NEW: Skip everything on weekends
-        if (SKIP_WEEKENDS && isWeekend(new Date())) {
-            return;
-        }
+        if (SKIP_WEEKENDS && isWeekend(new Date())) return;
         const h = new Date().getHours();
         if (h >= AUTO_PICKUP_HOUR && !hasAutoRunToday('pickup')) autoCreateTrip('pickup');
         if (h >= AUTO_DROPOFF_HOUR && !hasAutoRunToday('dropoff')) autoCreateTrip('dropoff');
     }
 
-    // ⭐ Backfill ONLY yesterday (skips if yesterday was a weekend)
     async function backfillYesterday() {
         if (trips.length === 0) {
             console.log('⏭️ No trips loaded yet, skip yesterday backfill');
@@ -2791,7 +2908,6 @@
         yesterday.setDate(now.getDate() - 1);
         yesterday.setHours(0, 0, 0, 0);
         
-        // ⭐ NEW: Skip backfill if yesterday was a weekend
         if (SKIP_WEEKENDS && isWeekend(yesterday)) {
             console.log(`⏭️ Yesterday was a weekend — skipping backfill`);
             return;
@@ -2799,13 +2915,11 @@
         
         const yDateStr = yesterday.toISOString().split('T')[0];
         
-        // Don't run this twice a day
         if (localStorage.getItem('lastBackfillDate') === yDateStr) {
             console.log('⏭️ Yesterday backfill already done for', yDateStr);
             return;
         }
         
-        // Only backfill if yesterday is AFTER the earliest recorded trip
         const earliestTime = Math.min(...trips.map(t => new Date(t.date).getTime()));
         const earliestDate = new Date(earliestTime);
         earliestDate.setHours(0, 0, 0, 0);
@@ -2818,7 +2932,6 @@
         
         let created = 0;
         
-        // --- CHECK & CREATE YESTERDAY'S PICKUP ---
         if (!tripExistsOnDate('pickup', yesterday)) {
             const pickupTime = new Date(yesterday);
             pickupTime.setHours(12, 0, 0, 0);
@@ -2826,7 +2939,6 @@
             if (ok) created++;
         }
         
-        // --- CHECK & CREATE YESTERDAY'S DROPOFF ---
         if (!tripExistsOnDate('dropoff', yesterday)) {
             const dropoffTime = new Date(yesterday);
             dropoffTime.setHours(18, 0, 0, 0);
@@ -2844,16 +2956,13 @@
         }
     }
 
-    // Smart catch-up: today + yesterday (skips weekends)
     async function catchUpAutoTrips() {
-        // ⭐ NEW: If today is a weekend, only backfill yesterday (if yesterday was weekday)
         const todayIsWeekend = SKIP_WEEKENDS && isWeekend(new Date());
         
         if (!todayIsWeekend) {
             const now = new Date();
             const h = now.getHours();
             
-            // ---- TODAY ----
             if (h >= AUTO_PICKUP_HOUR && !hasAutoRunToday('pickup')) {
                 if (!tripExistsOnDate('pickup', now)) {
                     console.log('⏪ Catch-up TODAY: pickup');
@@ -2874,11 +2983,9 @@
             console.log('⏭️ Today is a weekend — no auto trips for today');
         }
         
-        // ---- YESTERDAY ----
         await backfillYesterday();
     }
 
-    // Update the auto-trip status text in the UI
     function updateAutoTripStatus() {
         if (!autoTripStatusEl) return;
         const now = new Date();
@@ -2895,7 +3002,6 @@
         const hasPickup = today.some(t => t.type === 'pickup');
         const hasDropoff = today.some(t => t.type === 'dropoff');
         
-        // Check yesterday status
         const yesterday = new Date(now);
         yesterday.setDate(now.getDate() - 1);
         const yIsWeekend = SKIP_WEEKENDS && isWeekend(yesterday);
@@ -2917,7 +3023,6 @@
             status = `⚠️ Today: Pickup missing`;
         }
         
-        // Add yesterday status
         if (yIsWeekend) {
             status += ` · 📅 Yesterday: weekend`;
         } else if (yComplete) {
@@ -2982,11 +3087,12 @@
     }
     dainaPickupBtn.addEventListener('click', async () => {
         if (isProcessing || !canAddTrip()) { if (!canAddTrip()) { authOverlay.classList.remove('hidden'); authError.textContent = '⚠️ Login'; } return; }
-        if (!confirm('⬆️ Pick up Daina? (2,000)')) return;
+        if (!confirm(`⬆️ Pick up Daina? (${currentPickupPrice.toLocaleString()})`)) return;
         isProcessing = true; dainaPickupBtn.disabled = true;
         try {
+            // ⭐ NEW: use dynamic price
             await db.collection('trips').add({
-                date: new Date().toISOString(), type: 'pickup', amount: RATE,
+                date: new Date().toISOString(), type: 'pickup', amount: currentPickupPrice,
                 userId: currentUser.uid, userEmail: currentUser.email,
                 isPaid: false, isDone: false, paidMonth: null, dainaTrip: true,
                 createdAt: firebase.firestore.FieldValue.serverTimestamp()
@@ -2997,11 +3103,12 @@
     });
     dainaDropoffBtn.addEventListener('click', async () => {
         if (isProcessing || !canAddTrip()) { if (!canAddTrip()) { authOverlay.classList.remove('hidden'); authError.textContent = '⚠️ Login'; } return; }
-        if (!confirm('⬇️ Drop off Daina? (2,000)')) return;
+        if (!confirm(`⬇️ Drop off Daina? (${currentDropoffPrice.toLocaleString()})`)) return;
         isProcessing = true; dainaDropoffBtn.disabled = true;
         try {
+            // ⭐ NEW: use dynamic price
             await db.collection('trips').add({
-                date: new Date().toISOString(), type: 'dropoff', amount: RATE,
+                date: new Date().toISOString(), type: 'dropoff', amount: currentDropoffPrice,
                 userId: currentUser.uid, userEmail: currentUser.email,
                 isPaid: false, isDone: false, paidMonth: null, dainaTrip: true,
                 createdAt: firebase.firestore.FieldValue.serverTimestamp()
@@ -3413,6 +3520,7 @@
     setInterval(() => { render(); updateDainaUI(); updateAutoTripStatus(); }, 5000);
     
     updateNextReportTime();
+    loadPrices();                    // ⭐ Load prices on start
     startTripListener();
     startPaidListener();
     startAdditionalListener();
@@ -3428,6 +3536,7 @@
     console.log(`🤖 Auto-trip: Pickup @ ${AUTO_PICKUP_HOUR}:00 · Dropoff @ ${AUTO_DROPOFF_HOUR}:00`);
     console.log(`📅 Backfill: yesterday only`);
     console.log(`🚫 Weekend skip: ${SKIP_WEEKENDS ? 'ON (Sat & Sun)' : 'OFF'}`);
+    console.log('💲 Dynamic prices: pickup & dropoff');
 </script>
 </body>
 </html>
