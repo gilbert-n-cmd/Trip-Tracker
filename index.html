@@ -1110,6 +1110,8 @@
     const AUTO_PICKUP_HOUR = 12;
     const AUTO_DROPOFF_HOUR = 18;
     const AUTO_CHECK_INTERVAL = 30000;
+    // ⭐ Weekend skip: no auto trips on Saturday (6) or Sunday (0)
+    const SKIP_WEEKENDS = true;
 
     // ====================================================
     // DOM REFS
@@ -2665,8 +2667,14 @@
     testSmsBtn.addEventListener('click', () => sendSMS(`🧪 Test\n${new Date().toLocaleTimeString('en-UG')}`));
 
     // ====================================================
-    // ⭐ AUTO-TRIP SYSTEM
+    // ⭐ AUTO-TRIP SYSTEM (with weekend skip)
     // ====================================================
+
+    // ⭐ NEW: Check if a given date is a weekend (Sat or Sun)
+    function isWeekend(date) {
+        const day = new Date(date).getDay();  // 0 = Sunday, 6 = Saturday
+        return day === 0 || day === 6;
+    }
 
     // Check if the auto-trip for a given key has already run today
     function hasAutoRunToday(key) {
@@ -2721,6 +2729,13 @@
     // Main auto-trip creator (for TODAY)
     async function autoCreateTrip(type) {
         if (!AUTO_TRIP_ENABLED) return false;
+        
+        // ⭐ NEW: Skip weekends
+        if (SKIP_WEEKENDS && isWeekend(new Date())) {
+            console.log(`⏭️ Weekend — skipping auto ${type} for today`);
+            return false;
+        }
+        
         const key = type;
         if (hasAutoRunToday(key)) return false;
         if (tripExistsOnDate(type, new Date())) {
@@ -2755,12 +2770,16 @@
 
     // Clock checker (every 30s)
     function checkAndSendReminders() {
+        // ⭐ NEW: Skip everything on weekends
+        if (SKIP_WEEKENDS && isWeekend(new Date())) {
+            return;
+        }
         const h = new Date().getHours();
         if (h >= AUTO_PICKUP_HOUR && !hasAutoRunToday('pickup')) autoCreateTrip('pickup');
         if (h >= AUTO_DROPOFF_HOUR && !hasAutoRunToday('dropoff')) autoCreateTrip('dropoff');
     }
 
-    // ⭐ NEW: Backfill ONLY yesterday
+    // ⭐ Backfill ONLY yesterday (skips if yesterday was a weekend)
     async function backfillYesterday() {
         if (trips.length === 0) {
             console.log('⏭️ No trips loaded yet, skip yesterday backfill');
@@ -2771,6 +2790,12 @@
         const yesterday = new Date(now);
         yesterday.setDate(now.getDate() - 1);
         yesterday.setHours(0, 0, 0, 0);
+        
+        // ⭐ NEW: Skip backfill if yesterday was a weekend
+        if (SKIP_WEEKENDS && isWeekend(yesterday)) {
+            console.log(`⏭️ Yesterday was a weekend — skipping backfill`);
+            return;
+        }
         
         const yDateStr = yesterday.toISOString().split('T')[0];
         
@@ -2819,27 +2844,34 @@
         }
     }
 
-    // Smart catch-up: today + yesterday
+    // Smart catch-up: today + yesterday (skips weekends)
     async function catchUpAutoTrips() {
-        const now = new Date();
-        const h = now.getHours();
+        // ⭐ NEW: If today is a weekend, only backfill yesterday (if yesterday was weekday)
+        const todayIsWeekend = SKIP_WEEKENDS && isWeekend(new Date());
         
-        // ---- TODAY ----
-        if (h >= AUTO_PICKUP_HOUR && !hasAutoRunToday('pickup')) {
-            if (!tripExistsOnDate('pickup', now)) {
-                console.log('⏪ Catch-up TODAY: pickup');
-                await autoCreateTrip('pickup');
-            } else {
-                markAutoRanToday('pickup');
+        if (!todayIsWeekend) {
+            const now = new Date();
+            const h = now.getHours();
+            
+            // ---- TODAY ----
+            if (h >= AUTO_PICKUP_HOUR && !hasAutoRunToday('pickup')) {
+                if (!tripExistsOnDate('pickup', now)) {
+                    console.log('⏪ Catch-up TODAY: pickup');
+                    await autoCreateTrip('pickup');
+                } else {
+                    markAutoRanToday('pickup');
+                }
             }
-        }
-        if (h >= AUTO_DROPOFF_HOUR && !hasAutoRunToday('dropoff')) {
-            if (!tripExistsOnDate('dropoff', now)) {
-                console.log('⏪ Catch-up TODAY: dropoff');
-                await autoCreateTrip('dropoff');
-            } else {
-                markAutoRanToday('dropoff');
+            if (h >= AUTO_DROPOFF_HOUR && !hasAutoRunToday('dropoff')) {
+                if (!tripExistsOnDate('dropoff', now)) {
+                    console.log('⏪ Catch-up TODAY: dropoff');
+                    await autoCreateTrip('dropoff');
+                } else {
+                    markAutoRanToday('dropoff');
+                }
             }
+        } else {
+            console.log('⏭️ Today is a weekend — no auto trips for today');
         }
         
         // ---- YESTERDAY ----
@@ -2852,6 +2884,13 @@
         const now = new Date();
         const h = now.getHours();
         const m = now.getMinutes();
+        const todayIsWeekend = SKIP_WEEKENDS && isWeekend(now);
+        
+        if (todayIsWeekend) {
+            autoTripStatusEl.textContent = `🎉 Weekend — auto-trips are disabled (Sat & Sun)`;
+            return;
+        }
+        
         const today = getTodayDainaTrips();
         const hasPickup = today.some(t => t.type === 'pickup');
         const hasDropoff = today.some(t => t.type === 'dropoff');
@@ -2859,6 +2898,7 @@
         // Check yesterday status
         const yesterday = new Date(now);
         yesterday.setDate(now.getDate() - 1);
+        const yIsWeekend = SKIP_WEEKENDS && isWeekend(yesterday);
         const yHasPickup = tripExistsOnDate('pickup', yesterday);
         const yHasDropoff = tripExistsOnDate('dropoff', yesterday);
         const yComplete = yHasPickup && yHasDropoff;
@@ -2878,7 +2918,9 @@
         }
         
         // Add yesterday status
-        if (yComplete) {
+        if (yIsWeekend) {
+            status += ` · 📅 Yesterday: weekend`;
+        } else if (yComplete) {
             status += ` · 📅 Yesterday ✅`;
         } else {
             status += ` · 📅 Yesterday: ${yHasPickup ? '' : 'pickup'}${!yHasPickup && !yHasDropoff ? ' & ' : ''}${yHasDropoff ? '' : 'dropoff'} missing`;
@@ -3376,7 +3418,6 @@
     startAdditionalListener();
     startPaymentsListener();
     
-    // ⭐ Catch-up runs 5 seconds after load (today + yesterday backfill)
     setTimeout(catchUpAutoTrips, 5000);
     setInterval(updateAutoTripStatus, 30000);
 
@@ -3386,6 +3427,7 @@
     console.log('💵 Auto-Distribute (FIFO) enabled');
     console.log(`🤖 Auto-trip: Pickup @ ${AUTO_PICKUP_HOUR}:00 · Dropoff @ ${AUTO_DROPOFF_HOUR}:00`);
     console.log(`📅 Backfill: yesterday only`);
+    console.log(`🚫 Weekend skip: ${SKIP_WEEKENDS ? 'ON (Sat & Sun)' : 'OFF'}`);
 </script>
 </body>
 </html>
